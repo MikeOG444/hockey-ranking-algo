@@ -66,11 +66,16 @@ This is where "close loss to elite is positive / close win over weak is negative
 opponent's **current** rating `R_j` (floating, §5) — *not* the opponent's stale early rating → **I10**.
 ```
 scheduleTerm = α · (R_j − r_i)              # you get credit for playing up, debit for playing down
-             · resultWeight(result, B)       # close games vs strong teams count more as evidence
 ```
-Because `scheduleTerm` is keyed to opponent `j`, it varies **across opponents** but is **identical for the
-same opponent** — so it shifts cross-opponent comparisons (I6) **without ever affecting same-opponent
-ordering** (I1). That orthogonality is the whole trick.
+**Result-independent by design** (corrected during the build, 2026-06-20). An earlier draft multiplied
+this by a `resultWeight(result, B)` ("close games vs strong teams count more as evidence"). That is
+**unsafe for I1**: against the same elite opponent (`R_j > r_i`, so `scheduleTerm > 0`), a larger weight on
+a loss than a win adds *more* positive credit to the loss and can flip win/loss ordering. Dropping the
+weight makes `scheduleTerm` **identical for win/tie/loss vs the same opponent**, so it shifts cross-opponent
+comparisons (I6) **without ever affecting same-opponent ordering** (I1) — that orthogonality is the whole
+trick. The close-vs-blowout nuance (a *close* loss to elite is a positive signal, a *blowout* loss less so)
+is carried by `marginAdj` (the loss penalty grows with margin), not by the schedule term. Verified by the
+I1 + loss-penalty tests in `models/test_bespoke_credit.py`.
 
 ### 1.4 Why I1 and I6 cannot collide — *worked example*
 

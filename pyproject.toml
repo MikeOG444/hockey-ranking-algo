@@ -21,7 +21,7 @@ dev = [
 
 [tool.setuptools]
 # Flat functional layout per brief §10. Add packages as they land.
-packages = ["core", "generator"]
+packages = ["core", "generator", "models"]
 
 [tool.pytest.ini_options]
 # Determinism is sacred (I8): fixed test discovery, no surprises.
