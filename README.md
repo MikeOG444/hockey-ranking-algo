@@ -39,5 +39,6 @@ Python (numpy/scipy/pandas, pytest). The winning model gets ported to TypeScript
 - [x] **Phase 0: Decision memo** drafted, all tensions resolved, 4 design decisions made — [`docs/analysis/decision-memo.md`](docs/analysis/decision-memo.md) §11
 - [x] **Owner sign-off on the memo** + 4 design decisions
 - [x] **Phase 1: data contract** — Level-0 `GameRow` (outcome inferred, frozen) + Level-1 aggregator (folds the log, flips perspective, never trusts a summary). 14 tests, TDD.
-- [ ] Phase 2: synthetic Dixon–Coles generator (+ ground truth)
-- [ ] Phase 3–6: invariant harness → models → scenarios → decide
+- [x] **Phase 2: synthetic generator (core)** — Poisson world model (`expected_goals`, seeded `draw_scoreline`) + `simulate(config)` → Level-0 rows + hidden ground truth. Deterministic, recovers true-strength signal. 15 tests, TDD. *Deferred until a scenario needs them: Dixon–Coles low-score correction, multi-week trajectories, §8 JSON serialization.*
+- [ ] Phase 3: invariant harness (I1–I13 as reusable checks against the `rate()` interface)
+- [ ] Phase 4–6: models → scenarios → decide
