@@ -14,11 +14,9 @@ from models.bespoke import BespokeParams, per_game_credit
 P = BespokeParams()  # strawman defaults (memo §9)
 
 
-def credit(gf, ga, opp_rating=0.0, own_rating=0.0, opp_tier=3):
+def credit(gf, ga, opp_rating=0.0, opp_tier=3):
     """Total per-game credit from the team's perspective (goals_for, goals_against)."""
-    return per_game_credit(
-        gf, ga, opp_rating=opp_rating, own_rating=own_rating, opp_tier=opp_tier, params=P
-    ).total
+    return per_game_credit(gf, ga, opp_rating=opp_rating, opp_tier=opp_tier, params=P).total
 
 
 WIN_SCORES = [(1, 0), (3, 0), (4, 0), (5, 0), (8, 0)]

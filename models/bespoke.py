@@ -12,7 +12,10 @@ Per-game credit is an additive decomposition so the fairness floor is structural
   same opponent, so it never threatens I1, yet still rewards playing up / debits playing down (I6/I10).
 """
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+
+from core.game import GameRow
 
 
 @dataclass(frozen=True)
@@ -52,27 +55,23 @@ def margin_bucket(margin_abs: int) -> str:
     return "5+"
 
 
-def _base(result: str, p: BespokeParams) -> float:
-    return {"W": p.win, "T": p.tie, "L": p.loss}[result]
-
-
-def per_game_credit(
-    goals_for: int,
-    goals_against: int,
-    *,
-    opp_rating: float,
-    own_rating: float,
-    opp_tier: int,
-    params: BespokeParams,
-) -> CreditBreakdown:
+def classify(goals_for: int, goals_against: int) -> str:
+    """Infer W / L / T from a team's goals_for vs goals_against."""
     if goals_for > goals_against:
-        result = "W"
-    elif goals_for < goals_against:
-        result = "L"
-    else:
-        result = "T"
+        return "W"
+    if goals_for < goals_against:
+        return "L"
+    return "T"
 
-    base = _base(result, params)
+
+def base_and_margin(goals_for: int, goals_against: int, params: BespokeParams) -> tuple[float, float]:
+    """The opponent-independent part of credit: (base floor, margin adjustment).
+
+    This is the piece that holds invariants I1-I5; it does not depend on any rating, so in the
+    schedule solve it is a constant per game (only the schedule term re-rates each iteration).
+    """
+    result = classify(goals_for, goals_against)
+    base = {"W": params.win, "T": params.tie, "L": params.loss}[result]
     bucket = margin_bucket(abs(goals_for - goals_against))
     if result == "W":
         margin_adj = params.win_bonus[bucket]  # bounded, diminishing bonus on top of the win floor
@@ -80,5 +79,103 @@ def per_game_credit(
         margin_adj = -params.loss_penalty[bucket]  # penalty below the loss floor; zero for close
     else:
         margin_adj = 0.0  # a tie earns no margin adjustment (I5: no big bump)
-    schedule_term = params.alpha * (opp_rating - own_rating)
+    return base, margin_adj
+
+
+def per_game_credit(
+    goals_for: int,
+    goals_against: int,
+    *,
+    opp_rating: float,
+    opp_tier: int,
+    params: BespokeParams,
+) -> CreditBreakdown:
+    """One game's credit from a team's perspective.
+
+    The schedule term is the opponent's CURRENT rating scaled by alpha (strength of schedule,
+    floating per I10) — result-independent, so it never disturbs same-opponent ordering (I1).
+    """
+    base, margin_adj = base_and_margin(goals_for, goals_against, params)
+    schedule_term = params.alpha * opp_rating
     return CreditBreakdown(base=base, margin_adj=margin_adj, schedule_term=schedule_term)
+
+
+# --- the schedule solve (memo §2-§3) ---------------------------------------
+
+
+@dataclass(frozen=True)
+class RateResult:
+    """The common model output (memo §8). tiers/per_game_attribution/trend are filled in as the
+    later invariants (I6/I11/I12/I13) bring them online."""
+
+    ratings: dict[str, float]
+    tiers: dict[str, int]
+    per_game_attribution: dict
+    trend: dict[str, float]
+
+
+def _teams_of(games: Iterable[GameRow]) -> list[str]:
+    seen: set[str] = set()
+    for g in games:
+        seen.add(g.team)
+        seen.add(g.opponent)
+    return sorted(seen)  # deterministic team order (I8)
+
+
+def rate(
+    games: Iterable[GameRow],
+    params: BespokeParams | None = None,
+    *,
+    lam: float = 0.05,
+    tol: float = 1e-12,
+    max_iter: int = 1000,
+    init: Mapping[str, float] | None = None,
+) -> RateResult:
+    """Solve season ratings as the fixed point of a damped batch iteration:
+
+        r_i <- (1 - lam) * mean_g[ const_g + alpha * r_opp ]   (+ lam * mean, which is 0 after centering)
+
+    `const_g` (base + margin) is fixed per game; only the schedule term re-rates each pass. With lam>0
+    and alpha<1 the map is a contraction -> a unique fixed point reached from any start (I8/I9). Ratings
+    are re-centered to mean 0 each pass (they are relative), which also pins the gauge on disconnected
+    graphs together with the pull toward the mean.
+    """
+    params = params or BespokeParams()
+    games = list(games)
+    teams = _teams_of(games)
+
+    # Per-team perspective entries: (const_credit, opponent_id). Both sides of every game.
+    entries: dict[str, list[tuple[float, str]]] = {t: [] for t in teams}
+    for g in games:
+        b, m = base_and_margin(g.goals_team, g.goals_opponent, params)
+        entries[g.team].append((b + m, g.opponent))
+        b, m = base_and_margin(g.goals_opponent, g.goals_team, params)
+        entries[g.opponent].append((b + m, g.team))
+    # Canonical summation order so the result is byte-identical regardless of input order (I8).
+    for t in teams:
+        entries[t].sort(key=lambda e: (e[1], e[0]))
+
+    r = {t: 0.0 for t in teams}
+    if init is not None:
+        r = {t: float(init.get(t, 0.0)) for t in teams}
+
+    for _ in range(max_iter):
+        new = {}
+        for t in teams:
+            ent = entries[t]
+            if not ent:
+                new[t] = 0.0
+                continue
+            total = 0.0
+            for const, opp in ent:
+                total += const + params.alpha * r[opp]
+            new[t] = (1.0 - lam) * (total / len(ent))
+        mean = sum(new.values()) / len(new)
+        for t in teams:
+            new[t] -= mean  # re-center (gauge fix + regularization target)
+        delta = max(abs(new[t] - r[t]) for t in teams)
+        r = new
+        if delta < tol:
+            break
+
+    return RateResult(ratings=r, tiers={}, per_game_attribution={}, trend={})

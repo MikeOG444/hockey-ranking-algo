@@ -42,5 +42,7 @@ Python (numpy/scipy/pandas, pytest). The winning model gets ported to TypeScript
 - [x] **Phase 2: synthetic generator (core)** — Poisson world model (`expected_goals`, seeded `draw_scoreline`) + `simulate(config)` → Level-0 rows + hidden ground truth. Deterministic, recovers true-strength signal. 15 tests, TDD. *Deferred until a scenario needs them: Dixon–Coles low-score correction, multi-week trajectories, §8 JSON serialization.*
 - [ ] **Phase 3/4: bespoke model, test-first against invariants** (in progress)
   - [x] Per-game credit floor — `base + marginAdj + scheduleTerm`. **I1–I5 proven** (ordering, win-monotone, blowout cap, close-loss floor, tie placement). 7 tests.
-  - [ ] Schedule solve + tiers → I6, I7, I9, I10, I12, I13; trend → I11; determinism I8
+  - [x] Damped fixed-point `rate()` + `RateResult` interface. **I8** (byte-identical, order-independent) + **I9** (unique fixed point from any start) proven; recovers true order; ratings centered. 5 tests.
+  - [ ] Cross-opponent: I6, I7, I10 + attribution I12 (next — schedule term already provides the mechanism)
+  - [ ] Tiers + frozen window (I13), trend/recency (I11)
 - [ ] Phase 5–6: scenarios → decide

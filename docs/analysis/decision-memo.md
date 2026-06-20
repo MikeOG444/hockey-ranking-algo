@@ -65,17 +65,24 @@ TIE:   marginAdj = 0
 This is where "close loss to elite is positive / close win over weak is negative" lives. It depends on the
 opponent's **current** rating `R_j` (floating, §5) — *not* the opponent's stale early rating → **I10**.
 ```
-scheduleTerm = α · (R_j − r_i)              # you get credit for playing up, debit for playing down
+scheduleTerm = α · R_j                       # credit for the strength of who you played
 ```
-**Result-independent by design** (corrected during the build, 2026-06-20). An earlier draft multiplied
-this by a `resultWeight(result, B)` ("close games vs strong teams count more as evidence"). That is
-**unsafe for I1**: against the same elite opponent (`R_j > r_i`, so `scheduleTerm > 0`), a larger weight on
-a loss than a win adds *more* positive credit to the loss and can flip win/loss ordering. Dropping the
-weight makes `scheduleTerm` **identical for win/tie/loss vs the same opponent**, so it shifts cross-opponent
-comparisons (I6) **without ever affecting same-opponent ordering** (I1) — that orthogonality is the whole
-trick. The close-vs-blowout nuance (a *close* loss to elite is a positive signal, a *blowout* loss less so)
-is carried by `marginAdj` (the loss penalty grows with margin), not by the schedule term. Verified by the
-I1 + loss-penalty tests in `models/test_bespoke_credit.py`.
+**Two build-time corrections (2026-06-20), both to keep invariants structural:**
+1. *Removed the `resultWeight(result, B)` factor* an earlier draft applied. It is **unsafe for I1**:
+   against the same elite opponent (`scheduleTerm > 0`), a larger weight on a loss than a win adds *more*
+   positive credit to the loss and can flip win/loss ordering.
+2. *Replaced `α·(R_j − r_i)` with `α·R_j`* — dropped the own-rating self-reference. The `− r_i` term makes
+   a team's rating appear inside its own credit; folded into the fixed-point solve it gives an iteration
+   matrix with spectral radius `2α(1−λ)`, which **diverges for α ≳ 0.53** (right where I6 wants α). Plain
+   `α·R_j` (standard strength-of-schedule) gives spectral radius `α(1−λ) < 1` for all α<1 → clean
+   convergence (I9). It is also more faithful to principle 6, which speaks of *absolute* opponent tier
+   ("a top team", "a weak team"), not strength relative to self.
+
+Net effect: `scheduleTerm` is **identical for win/tie/loss vs the same opponent**, so it shifts
+cross-opponent comparisons (I6/I10) **without ever affecting same-opponent ordering** (I1) — that
+orthogonality is the whole trick. The I6 condition is unchanged (`α·(R_elite − R_field) > W − L`; the
+`r_i` canceled in the §1.4 example). The close-vs-blowout nuance is carried by `marginAdj`, not the
+schedule term. Verified by `models/test_bespoke_credit.py`.
 
 ### 1.4 Why I1 and I6 cannot collide — *worked example*
 
