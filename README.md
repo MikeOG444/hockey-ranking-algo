@@ -43,6 +43,6 @@ Python (numpy/scipy/pandas, pytest). The winning model gets ported to TypeScript
 - [ ] **Phase 3/4: bespoke model, test-first against invariants** (in progress)
   - [x] Per-game credit floor — `base + marginAdj + scheduleTerm`. **I1–I5 proven** (ordering, win-monotone, blowout cap, close-loss floor, tie placement). 7 tests.
   - [x] Damped fixed-point `rate()` + `RateResult` interface. **I8** (byte-identical, order-independent) + **I9** (unique fixed point from any start) proven; recovers true order; ratings centered. 5 tests.
-  - [ ] Cross-opponent: I6, I7, I10 + attribution I12 (next — schedule term already provides the mechanism)
+  - [x] Cross-opponent: **I6** (close loss to elite > close win over weak — α pinned 0.6), **I7** (margin never flips a beaten opponent), **I10** (stale-opponent float / "Dallas"), **I12** (per-game attribution reconciles to rating exactly, via stored `center_offset`). 5 tests, TDD. *End-to-end I6 (Scenario 7) deferred to TASK-11 — see memo Q1 caveat.*
   - [ ] Tiers + frozen window (I13), trend/recency (I11)
 - [ ] Phase 5–6: scenarios → decide

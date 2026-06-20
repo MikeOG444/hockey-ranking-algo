@@ -4,8 +4,9 @@ Map of remaining work to reach v1 (the bespoke model passes all §4 invariants o
 the MHR replica on Stage-A rank recovery). See `docs/planning/operating-model.md` for the task format,
 model matching, and parallelization rules. Branch each task from the noted commit.
 
-## Status snapshot (as of f4c5895)
-Done: data contract (L0/L1), generator core, bespoke credit floor **I1–I5**, solve **I8/I9** + recovery.
+## Status snapshot
+Done: data contract (L0/L1), generator core, bespoke credit floor **I1–I5**, solve **I8/I9** + recovery,
+**TASK-01 cross-opponent I6/I7/I10/I12** (α pinned 0.6; per-game attribution reconciles exactly).
 Remaining below.
 
 ## Dependency & parallel groups
@@ -28,6 +29,8 @@ PARALLEL GROUP B — generator features (sonnet, independent, concurrent with ev
 LATER (depend on the above):
   TASK-10 truth-scoring metrics (Spearman/Kendall, centered RMSE/MAE, tier accuracy)  [sonnet]
   TASK-11 scenario suite §7 (needs TASK-04 for trajectories)                          [sonnet, parallel per scenario]
+          ^ Scenario 7 must add the END-TO-END I6 check and re-derive α against the solver's
+            *reachable* converged gap (centering compresses it); credit-level I6 alone passed in TASK-01. See memo Q1.
   TASK-12 comparison runner + invariant matrix + rank-recovery report                 [sonnet; needs all models + harness]
   TASK-13 Stage-A tuning of strawman params toward rank recovery                      [opus; needs 11+12]
 ```
@@ -39,7 +42,7 @@ LATER (depend on the above):
 4. Then TASK-11 (scenarios) → TASK-12 (report) → TASK-13 (tune) → **v1 decision**.
 
 ## Task files
-- [TASK-01](TASK-01-cross-opponent-invariants.md) — cross-opponent invariants (opus, sequential)
+- [TASK-01](../done/TASK-01-cross-opponent-invariants.md) — cross-opponent invariants (opus, sequential) — **DONE**
 - [TASK-02](TASK-02-mhr-replica.md) — MHR replica benchmark (sonnet, parallel-safe)
 - [TASK-03](TASK-03-ridge-massey.md) — ridge Massey benchmark (sonnet, parallel-safe)
 - [TASK-04](TASK-04-generator-trajectories.md) — multi-week trajectories (sonnet, parallel-safe)

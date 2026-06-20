@@ -90,18 +90,23 @@ I6 (brief §82): *a 1-goal loss to a top-tier team must rate better than a 1-goa
 bottom-of-field team.* I1: *vs the same opponent, win ≥ tie ≥ loss.* These feel contradictory; they aren't,
 because they compare **different things**.
 
-Let strawman `W=3, T=1, L=0`, `α=0.5`, close-game `resultWeight=1`, `marginAdj=0` for close games.
-Ratings centered: elite team `R_elite=+4`, field team `R_field=−2`, our team `r_i=0`.
+Let strawman `W=3, T=1, L=0`, `marginAdj=0` for close games. The schedule term is plain `α·R_j` (the
+§1.3 correction dropped the `− r_i` self-reference), so our own rating never enters our credit. Ratings
+centered: elite team `R_elite=+4`, field team `R_field=−2`.
 
-| Game | base | marginAdj | scheduleTerm = α·(R_j − r_i) | **credit** |
+| Game | base | marginAdj | scheduleTerm = α·R_j | **credit (α=0.5)** |
 |---|---|---|---|---|
-| 1-goal **loss to elite** | `L=0` | `0` (close) | `0.5·(4−0)= +2.0` | **+2.0** |
-| 1-goal **win over field** | `W=3` | `0` (close) | `0.5·(−2−0)= −1.0` | **+2.0**… |
+| 1-goal **loss to elite** | `L=0` | `0` (close) | `0.5·4 = +2.0` | **+2.0** |
+| 1-goal **win over field** | `W=3` | `0` (close) | `0.5·(−2) = −1.0` | **+2.0**… |
 
-Tune so the loss-to-elite edges ahead (e.g. `α=0.6`: loss→+2.4, win→3−1.2=+1.8). **I6 satisfied.**
+At `α=0.5` the canonical +4/−2 gap (6) is exactly a tie (`α·gap = 3 = W−L`), so I6 is not yet strict.
+**α is pinned just above the bound — the shipped default is `α=0.6`** (loss→+2.4, win→3−1.2=+1.8). **I6
+satisfied.** (Caveat — this is a *credit-level* guarantee on `per_game_credit`; whether the solver's
+*converged* ratings actually reach a gap of 6 is topology-dependent and is validated end-to-end by
+Scenario 7 / TASK-11. See Q1.)
 
 Now check **I1 is untouched**: against *that same elite team*, compare a win vs a loss. Both share the
-**same** `scheduleTerm` (`0.6·(4−0)=+2.4`) and same close-`marginAdj` (0). Only `base` differs:
+**same** `scheduleTerm` (`0.6·4 = +2.4`) and same close-`marginAdj` (0). Only `base` differs:
 - win vs elite = `3 + 0 + 2.4 = 5.4`
 - loss vs elite = `0 + 0 + 2.4 = 2.4`
 
@@ -227,7 +232,7 @@ The MHR replica, ridge Massey, and bespoke all conform so the harness swaps them
 | `W / T / L` | `3 / 1 / 0` | result floor; ordering enforced here |
 | `bonus[3/4/5+]` | `0.6 / 0.9 / 1.0` | diminishing: `Δ=0.6,0.3,0.1`; close=0 |
 | `pen[3/4/5+]` | `0.5 / 0.8 / 1.0` | close=0; increasing |
-| `α` (schedule) | `0.5–0.6` | tune so I6 example holds with margin to spare |
+| `α` (schedule) | `0.6` | pinned just above the I6 credit-level bound (0.5 ties the +4/−2 example); sweep `0.3–0.8` in Stage A |
 | `m(tier)/p(tier)` | per-tier-gap scalars | modulate adjustment only |
 | `ρ` (game recency) | exp decay, ~½-life 3–4 wks | recent heavier |
 | `λ` (regularization) | `0.05` | unique fixed point |
@@ -269,7 +274,7 @@ not the pick, has the final word.
 
 | # | Decision | Rationale (criterion) | Confirming test → *falsified if* |
 |---|---|---|---|
-| **Q1 `α`** | **Derived, not guessed. Start `0.5`; sweep `0.3–0.8` in Stage A.** α is pinned by I6: `α > (W−L)/(elite−field gap) = 3/~6 ≈ 0.5`, and must stay `<1` for the contraction (I9). Floor at the I6 bound, cap below result-dominance. | Structural invariant safety (1) sets the floor; rank-recovery (2) picks within range. | Scenarios 7 (I6), 3, 4 (I10) + convergence sweep. *Falsified if* no α clears I6 without breaking convergence or recovery. |
+| **Q1 `α`** | **Derived, not guessed. Pinned `0.6` (TASK-01); sweep `0.3–0.8` in Stage A.** α is pinned by I6: `α > (W−L)/(elite−field gap) = 3/6 = 0.5` at the canonical credit-level gap, so `0.5` ties and `0.6` clears with margin; must stay `<1` for the contraction (I9, `α(1−λ)=0.57`). **Open caveat (invariant-auditor, TASK-01):** the I6 *credit-level* test holds at α=0.6, but the solver's *converged* spread is compressed by centering — an "elite" team that merely beat an average field reaches only `α·gap ≈ 2.8 < 3`, so end-to-end I6 inverts there; it holds only where the elite team beat a genuinely strong slate (gap ≈ 6, the Scenario-7 construction). **TASK-11 must validate end-to-end and re-derive α against the *reachable* gap** (or qualify I6's claim), not the hand-picked one. | Structural invariant safety (1) sets the floor; rank-recovery (2) picks within range. | Scenarios 7 (I6), 3, 4 (I10) + convergence sweep. *Falsified if* no α clears I6 end-to-end without breaking convergence or recovery. |
 | **Q2 `T`** | **`T = 1` (the 3/1/0 scale).** Tie sits ⅓ toward a win — well below midpoint = "tying is not winning, no big bump" (rule 2); most legible value. | Explainability (3); recovery expected insensitive (2). | Scenario 8 (I5) + sensitivity `T∈{0.5,1,1.5}`. *Falsified if* recovery moves materially with T → data decides. |
 | **Q3 tier mod** | **Discrete (margin-bucket × tier) lookup table.** Stability comes from the §5 frozen recency-weighted window (that's what I13 is for), **not** from smoothing — smoothing by rating-gap would double-count `scheduleTerm`. Keep the two opponent channels orthogonal: `scheduleTerm`=strength-of-schedule, tier-table=how margin reads by tier. | Faithful to brief's 2-D surface + explainability (3); robustness via window (4). | Scenario 13 (no whipsaw once windowed) + **ablation**: each channel adds recovery, contributions not redundant (corr < ~0.7). *Falsified if* redundant → collapse to one channel. |
 | **Q4 weak-team win** | **Real but *bounded* debit, in the `scheduleTerm` channel only.** Rule 6 ("negative signal") ⇒ genuine debit, not withheld credit. Safe: debit lives in schedule, never in `base`/`marginAdj`, and the floor (I7) is about margin + schedule-matched comparisons, so I1/I4/I5/I7 hold structurally. Cap magnitude both directions ("cap the benefit"). | Invariant safety (1) via channel isolation; brief intent. | Scenarios 3, 6 + constructed schedule-matched I7 case. *Falsified if* the debit ever flips a schedule-matched result order. |

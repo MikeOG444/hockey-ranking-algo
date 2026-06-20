@@ -4,8 +4,9 @@ These test the per-game CREDIT function — the heart of the fairness floor. The
 invariants (I6-I13) come later, on rate(). Here we fix the opponent so the schedule term is
 identical across results, isolating base + margin behavior.
 
-Credit decomposition (memo §1, with the §1.3 result-dependent schedule weight removed so I1
-holds structurally): credit = base(result) + marginAdj(result, bucket, tier) + alpha*(R_j - r_i).
+Credit decomposition (memo §1, with both §1.3 corrections applied — the result-dependent schedule
+weight removed and the own-rating self-reference dropped — so I1 holds structurally and the solve
+converges): credit = base(result) + marginAdj(result, bucket, tier) + alpha*R_j.
 """
 
 

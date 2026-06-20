@@ -2,7 +2,7 @@
 
 Per-game credit is an additive decomposition so the fairness floor is structural, not tuned:
 
-    credit = base(result) + marginAdj(result, bucket, tier) + alpha * (opp_rating - own_rating)
+    credit = base(result) + marginAdj(result, bucket, tier) + alpha * opp_rating
 
 - base(result) is a pure floor (W > T > L); nothing may override it -> guarantees I1.
 - marginAdj modulates only the bonus/penalty: wins add a bounded, diminishing bonus; losses
@@ -41,7 +41,11 @@ class BespokeParams:
     # Margin bonus for wins (diminishing, capped) and penalty for losses (close = 0, increasing).
     win_bonus: dict[str, float] = field(default_factory=lambda: {"close": 0.0, "3": 0.6, "4": 0.9, "5+": 1.0})
     loss_penalty: dict[str, float] = field(default_factory=lambda: {"close": 0.0, "3": 0.5, "4": 0.8, "5+": 1.0})
-    alpha: float = 0.5  # strength of the schedule (play-up / play-down) signal
+    # Strength of the schedule (play-up / play-down) signal. Derived, not guessed (memo Q1): I6
+    # pins it just above (W - L) / (elite - field gap). For the canonical +4 / -2 example that gap
+    # is 6, so alpha=0.5 ties (0.5*6 == W-L == 3) and fails I6; alpha=0.6 clears it with margin
+    # (0.6*6 = 3.6 > 3). Still a contraction for I9 since alpha*(1-lam) = 0.6*0.95 = 0.57 < 1.
+    alpha: float = 0.6
 
 
 def margin_bucket(margin_abs: int) -> str:
@@ -105,13 +109,20 @@ def per_game_credit(
 
 @dataclass(frozen=True)
 class RateResult:
-    """The common model output (memo §8). tiers/per_game_attribution/trend are filled in as the
-    later invariants (I6/I11/I12/I13) bring them online."""
+    """The common model output (memo §8). tiers/trend are filled in as the later invariants
+    (I11/I13) bring them online.
+
+    `per_game_attribution` maps each team to a list of CreditBreakdown — one per game it played,
+    built from the opponents' CONVERGED ratings (I12). `center_offset` is the single scalar
+    subtracted from every team's pre-centered value to gauge-fix the ratings to mean 0; storing it
+    makes the reconciliation `rating_i == (1 - lam) * mean_g(breakdown.total) - center_offset`
+    exact rather than merely approximate (memo §7)."""
 
     ratings: dict[str, float]
     tiers: dict[str, int]
-    per_game_attribution: dict
+    per_game_attribution: dict[str, list[CreditBreakdown]]
     trend: dict[str, float]
+    center_offset: float = 0.0
 
 
 def _teams_of(games: Iterable[GameRow]) -> list[str]:
@@ -144,16 +155,18 @@ def rate(
     games = list(games)
     teams = _teams_of(games)
 
-    # Per-team perspective entries: (const_credit, opponent_id). Both sides of every game.
-    entries: dict[str, list[tuple[float, str]]] = {t: [] for t in teams}
+    # Per-team perspective entries: (base, margin, opponent_id). Both sides of every game. We keep
+    # base and margin separate (not pre-summed) so the same entries drive both the solve and the
+    # per-game attribution (I12) without recomputing the floor.
+    entries: dict[str, list[tuple[float, float, str]]] = {t: [] for t in teams}
     for g in games:
         b, m = base_and_margin(g.goals_team, g.goals_opponent, params)
-        entries[g.team].append((b + m, g.opponent))
+        entries[g.team].append((b, m, g.opponent))
         b, m = base_and_margin(g.goals_opponent, g.goals_team, params)
-        entries[g.opponent].append((b + m, g.team))
+        entries[g.opponent].append((b, m, g.team))
     # Canonical summation order so the result is byte-identical regardless of input order (I8).
     for t in teams:
-        entries[t].sort(key=lambda e: (e[1], e[0]))
+        entries[t].sort(key=lambda e: (e[2], e[0], e[1]))
 
     r = {t: 0.0 for t in teams}
     if init is not None:
@@ -167,8 +180,8 @@ def rate(
                 new[t] = 0.0
                 continue
             total = 0.0
-            for const, opp in ent:
-                total += const + params.alpha * r[opp]
+            for base, margin, opp in ent:
+                total += base + margin + params.alpha * r[opp]
             new[t] = (1.0 - lam) * (total / len(ent))
         mean = sum(new.values()) / len(new)
         for t in teams:
@@ -178,4 +191,31 @@ def rate(
         if delta < tol:
             break
 
-    return RateResult(ratings=r, tiers={}, per_game_attribution={}, trend={})
+    # Attribution pass (I12): with the ratings converged, replay each team's games once more to
+    # record the three named drivers per game, using opponents' FINAL ratings for the schedule term.
+    # The same algebra as a solve step (pre-center value = (1-lam)*mean of breakdown totals) then a
+    # single shared centering offset; we rebuild ratings from these so the reconciliation
+    # `rating == (1-lam)*mean(breakdown.total) - center_offset` is exact, not merely within tolerance.
+    # The breakdown already splits result-driven credit (base + margin_adj) from schedule-driven
+    # credit (schedule_term); the weekly result-vs-schedule *delta* split (memo §7) waits on the
+    # per-week solve that arrives with tiers/trend (TASK-05/06).
+    attribution: dict[str, list[CreditBreakdown]] = {}
+    pre: dict[str, float] = {}
+    for t in teams:
+        ent = entries[t]
+        breakdowns = [
+            CreditBreakdown(base=base, margin_adj=margin, schedule_term=params.alpha * r[opp])
+            for base, margin, opp in ent
+        ]
+        attribution[t] = breakdowns
+        pre[t] = (1.0 - lam) * (sum(bd.total for bd in breakdowns) / len(ent)) if ent else 0.0
+    center_offset = sum(pre.values()) / len(pre)
+    ratings = {t: pre[t] - center_offset for t in teams}
+
+    return RateResult(
+        ratings=ratings,
+        tiers={},
+        per_game_attribution=attribution,
+        trend={},
+        center_offset=center_offset,
+    )

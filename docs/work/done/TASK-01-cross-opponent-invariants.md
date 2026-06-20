@@ -1,6 +1,6 @@
 # TASK-01: cross-opponent invariants (I6, I7, I10) + attribution (I12)
 
-**Status:** todo
+**Status:** done
 **Model:** opus — touches the fairness floor / solve; invariant-critical, design judgment required.
 **Parallel-safe:** no — edits `models/bespoke.py` (single file) and these invariants interact. One chat, sequential.
 **Depends on:** I8/I9 solve (done). **Branch from:** `f4c5895` (or main HEAD).
