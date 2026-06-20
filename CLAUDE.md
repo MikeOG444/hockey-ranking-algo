@@ -60,6 +60,18 @@ replica on rank-recovery. Benchmarks are *allowed* to fail invariants — that's
 - **`invariant-auditor`** (project agent) — adversarially verify a model against I1–I13.
 - **`spec-keeper`** (project agent) — review changes for drift from the brief/memo principles.
 
+## How we run the build (operating model)
+**[docs/planning/operating-model.md](docs/planning/operating-model.md)** governs task slicing, model
+matching, and parallelization. The essentials:
+- **One task = one chat.** Tasks live in `docs/work/todo/` as self-contained handoffs (see `INDEX.md` for
+  the queue + dependency/parallel map). A cold chat opens a task file and has everything it needs.
+- **Model matching:** anything touching `models/bespoke.py`'s floor/solve or the final decision → **opus**;
+  benchmark models, generator features, metrics, harness wiring → **sonnet**; mechanical/templated work
+  (scenario configs, formatting, test-running) → **haiku**. When unsure, step up a tier.
+- **Parallelize only** independent tasks on **separate files** (benchmarks, generator features, per-scenario
+  authoring), each gated green by `pytest`+`ruff` before merge. **Never** parallelize edits to `bespoke.py`
+  or coupled invariants. Run `invariant-auditor`/`spec-keeper` after model changes.
+
 ## Documentation hygiene
 Keep the docs taxonomy alive as we build: design decisions → `docs/analysis/`, build/interface notes →
 `docs/implementation/`, plans/status → `docs/planning/`, reference facts → `docs/knowledge-bank/`,
