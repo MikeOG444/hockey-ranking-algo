@@ -37,5 +37,7 @@ Python (numpy/scipy/pandas, pytest). The winning model gets ported to TypeScript
 ## Where we are
 - [x] Plan locked — [`docs/planning/PLAN.md`](docs/planning/PLAN.md)
 - [x] **Phase 0: Decision memo** drafted, all tensions resolved, 4 design decisions made — [`docs/analysis/decision-memo.md`](docs/analysis/decision-memo.md) §11
-- [ ] **Owner sign-off on the memo** ← the gate
-- [ ] Phase 1–6: build (Phase 1 = data contract + Level-0/Level-1, then generator)
+- [x] **Owner sign-off on the memo** + 4 design decisions
+- [x] **Phase 1: data contract** — Level-0 `GameRow` (outcome inferred, frozen) + Level-1 aggregator (folds the log, flips perspective, never trusts a summary). 14 tests, TDD.
+- [ ] Phase 2: synthetic Dixon–Coles generator (+ ground truth)
+- [ ] Phase 3–6: invariant harness → models → scenarios → decide

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hockey-rating-spike"
+version = "0.1.0"
+description = "Transparent, deterministic, fair youth-hockey rating model — research spike"
+requires-python = ">=3.11"
+# Level-0/Level-1 (the data contract) are pure-stdlib arithmetic — no runtime deps yet.
+# numpy/scipy/pandas get added when the generator and solvers need them (Phase 2+).
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[tool.setuptools]
+# Flat functional layout per brief §10. Only `core` has code today; add others as they land.
+packages = ["core"]
+
+[tool.pytest.ini_options]
+# Determinism is sacred (I8): fixed test discovery, no surprises.
+testpaths = ["core", "harness", "generator", "models"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# E741: `l` is normally an ambiguous name, but `w`/`l`/`t` is the brief §5 Level-1
+# data contract (wins/losses/ties). Keeping the contract's triple intact is clearer than
+# breaking its symmetry (`losses` alongside `w`/`t`). Narrow, intentional exception.
+ignore = ["E741"]
