@@ -11,7 +11,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now (deps met — needs `/task-new <id>` to refine, then `/task <id>` to run)
 
-- **TASK-05** tiers + frozen window (I13) — opus — **sequential (no parallel)** — run `/task 05` next
+- **TASK-05** tiers + frozen window (I13) — opus — **sequential (no parallel)** — _in-progress (branch `task/tiers-frozen-window`)_
 
 The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other and with TASK-05.
 
@@ -32,7 +32,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 02 | MHR replica benchmark | **done** | sonnet | models/mhr_replica.py | yes | — |
 | 03 | Ridge Massey benchmark | **done** | sonnet | models/ridge_massey.py | yes | — |
 | 04 | Generator multi-week trajectories | **done** | sonnet | generator/* | yes | — |
-| 05 | Tiers + frozen window (I13) | **ready** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
+| 05 | Tiers + frozen window (I13) | **in-progress** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
 | 06 | Trend + recency weighting (I11) | backlog | opus | models/bespoke.py | **no (core)** | 01 |
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | backlog | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
