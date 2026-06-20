@@ -9,11 +9,19 @@ See `docs/planning/operating-model.md` for how tasks flow. Start one with `/task
 **Parallel rule:** two tasks may run concurrently only if their **Owns (files)** sets are disjoint.
 Anything owning `models/bespoke.py` is **sequential** — never run two of those at once.
 
-## ▶ Ready now (refined + deps met — pick from here)
-- **TASK-03** ridge Massey benchmark — sonnet — parallel-safe (own files)
-- **TASK-04** generator trajectories — sonnet — parallel-safe (own files)
+## ▶ Ready now (deps met — needs `/task-new <id>` to refine, then `/task <id>` to run)
 
-> TASK-03 + TASK-04 own disjoint files → valid **parallel batch** (orchestrator or two chats).
+The following are unblocked but still `backlog` — refine before executing.
+All five are parallel-safe with each other.
+
+- **TASK-07** model-agnostic invariant harness — sonnet — critical path (blocks 12)
+- **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
+- **TASK-11** scenario suite §7 — sonnet — critical path (blocks 13); dep 04 just merged
+- **TASK-08** Dixon–Coles low-score correction — sonnet — dep 04 just merged
+- **TASK-09** JSON serialization — haiku — no deps, isolated
+
+**Sequential core-model chain (start after harness/metrics/scenarios land):**
+- TASK-05 → TASK-06 (both own `models/bespoke.py`; opus; never parallelize)
 
 ## Board
 
