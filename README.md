@@ -45,4 +45,10 @@ Python (numpy/scipy/pandas, pytest). The winning model gets ported to TypeScript
   - [x] Damped fixed-point `rate()` + `RateResult` interface. **I8** (byte-identical, order-independent) + **I9** (unique fixed point from any start) proven; recovers true order; ratings centered. 5 tests.
   - [ ] Cross-opponent: I6, I7, I10 + attribution I12 (next — schedule term already provides the mechanism)
   - [ ] Tiers + frozen window (I13), trend/recency (I11)
+- [x] **Phase 4: MHR replica benchmark** — AGD (avg goal-diff capped ±7) + SCHED (mean opponent
+  rating), iterative fixed-point solve, centered to mean 0. **I8** (byte-identical, order-independent)
+  + **I9** (unique fixed point from any start) proven; recovers gross strength order.
+  **I1 violation documented**: constructed a case where a team that *lost* to the shared opponent
+  outrates one that *won*, because season-wide AGD has no per-game result floor — the comparative
+  story motivating the bespoke floor. 6 tests.
 - [ ] Phase 5–6: scenarios → decide
