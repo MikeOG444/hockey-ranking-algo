@@ -1,9 +1,9 @@
 # TASK-04: multi-week trajectories in the generator
 
-**Status:** todo
-**Model:** sonnet — generator feature from a clear spec.
-**Parallel-safe:** yes — edits `generator/` only (`simulate.py`, `world.py`, tests). Safe alongside TASK-01/02/03.
-**Depends on:** generator core (done). **Branch from:** `f4c5895`.
+**State:** ready · **Model:** sonnet — generator feature from a clear spec.
+**Owns (files):** `generator/simulate.py`, `generator/world.py`, `generator/test_*.py`.
+**Parallel-safe:** yes (disjoint from TASK-03). **Depends on:** generator core (done, on `main`).
+**Branch from:** latest `main` — the `/task 04` loop handles branch + PR.
 
 ## Goal
 Let a team's true strength change over weeks so momentum/instability scenarios are possible. Required by
@@ -30,7 +30,7 @@ Add a deterministic mapping from `(TeamParams, week) -> (attack, defense)` drive
 
 ## Acceptance / Definition of done
 - [ ] New trajectory tests pass; existing generator tests still green; `ruff check .` clean.
-- [ ] `flat` path unchanged (regression-safe). Commit in house style; move to `docs/work/done/`; update `README.md`.
+- [ ] `flat` path unchanged (regression-safe). Commit in house style; flip the board row to `in-review`; open a PR and stop for approval.
 
 ## Out of scope
 No model/harness changes. Don't build scenarios here (TASK-11) — just the generator capability they need.

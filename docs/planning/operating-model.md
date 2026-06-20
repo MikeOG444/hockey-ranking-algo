@@ -1,111 +1,101 @@
-# Operating Model — how we run the build
+# Operating Model v2 — how we run the build
 
-How work is sliced, handed off between chats, matched to a model, and (when safe) parallelized.
-This project is 100% AI-authored and reviewed in chat (see `CLAUDE.md`); this doc keeps that scalable.
+How work is sliced, tracked, run on trunk, handed to fresh chats, matched to a model, and (when safe)
+parallelized. This project is 100% AI-authored and reviewed in chat (see `CLAUDE.md`); this doc keeps that
+scalable **without the integration tangle that v1 produced** (see Postmortem at the end).
 
-## 1. One task = one chat
+## 0. The spine in one paragraph
+`main` (on GitHub) is the **single source of truth**. Each task is a **short-lived branch off `main`**,
+taken to green with TDD, opened as a **PR**, reviewed in chat, then merged and the branch deleted. Task
+state lives in one place — **[`docs/work/BOARD.md`](../work/BOARD.md)** — which tells you what's done,
+in-flight, and **ready to pick up next**. You start a task with **`/task <id>`** (no hand-written prompt).
+Default execution is **sequential**; parallelism is opt-in, isolated in worktrees, and only for tasks whose
+file sets don't overlap.
 
-We change tasks by opening a **new chat** to preserve context window. That only works if each task is
-self-contained. Every task lives as a file in `docs/work/todo/` and moves to `docs/work/done/` when shipped.
+## 1. Trunk + PR integration (the rule that was missing in v1)
+- **`main` is trunk and the only source of truth.** It always builds green. Status and the task queue live
+  on `main`, never on a feature branch.
+- **One task = one short-lived branch off latest `main`.** Name `task/NN-<slug>`. Take it to green, open a
+  PR, get chat approval, **merge, delete the branch.** Don't let branches linger or diverge.
+- **One writer per file.** Each task declares the files it **Owns** (board column). A file is owned by at
+  most one in-flight task. `models/bespoke.py` (the model core) is owned by one task at a time → those tasks
+  **serialize, always**.
+- **"Stop before merge" = the PR.** The executing chat stops at PR-open; a human approves; merge follows.
+  This is the review gate (we review in chat, per `CLAUDE.md`).
 
-**A task file must let a cold chat start with no prior memory.** Required sections (template below):
-goal, **read-first references** (exact files + doc sections + the commit to branch from), TDD approach,
-acceptance criteria (named tests/invariants), model, parallel-safety, out-of-scope.
+## 2. The board — single source of truth (`docs/work/BOARD.md`)
+The only place state lives. Columns: `ID | Title | State | Model | Owns (files) | Parallel | Deps`.
+- **Lifecycle:** `backlog` → `refined` (task file complete) → `ready` (refined + deps `done`) →
+  `in-progress` → `in-review` (PR open) → `done`. `blocked` if a dep regresses.
+- A **"▶ Ready now"** section is the pick-up-next queue.
+- **Parallel rule:** two tasks may run at once only if their **Owns** sets are disjoint. The board makes
+  overlaps visible *before* you fan out.
+- Task files live in `docs/work/tasks/` (one folder; the board is the state, not the folder).
 
-> **Self-contained or it didn't happen.** A fresh chat cannot see *any* other chat — not the planning
-> chat that created the task, not a sibling task chat running in parallel. Anything that matters must live
-> in the task file or in a committed doc/commit it references. **Corollary:** when a task chat turns out to
-> be missing context, fix the *task file* (or the doc it points to) — never paper over it with a longer
-> kickoff prompt. The prompt is thrown away; the task file is read by the next chat too. A gap patched in
-> chat is a gap that reappears.
+## 3. Tasks — one chat, self-contained
+We change tasks by opening a **new chat** to preserve context. That only works if the task file is complete.
 
+> **Self-contained or it didn't happen.** A fresh chat sees *no* other chat. Everything it needs lives in
+> the task file or a committed doc/commit it references. **When a chat is missing context, fix the task file
+> — never the prompt.** The prompt is thrown away; the task file is read by the next chat too.
+
+Template (use `/task-new` to scaffold):
 ```markdown
 # TASK-NN: <title>
-**Status:** todo | in-progress | done
-**Model:** haiku | sonnet | opus — <one-line why>
-**Parallel-safe:** yes | no — <what files it touches; why>
-**Depends on:** <task ids / commit / "none">
-**Branch from:** <commit sha or "main HEAD">
-
-## Goal
-<2-3 sentences: what done looks like>
-
-## Read first (context for a cold chat)
-- `CLAUDE.md` (operating contract) and this task file
-- <decision-memo §X, brief §Y, specific source files with paths>
-
+**Status / Model / Owns (files) / Parallel-safe / Deps / Branch from:** <…>
+## Goal — 2-3 sentences
+## Read first — CLAUDE.md + exact files/doc-sections + the commit to branch from
 ## Approach (TDD — tests first, watch them fail)
-<the red→green steps; which invariants/behaviors to pin>
-
-## Acceptance / Definition of done
-- [ ] <named tests pass> ; full `pytest` green ; `ruff check .` clean
-- [ ] <invariants satisfied> ; <attribution/score thresholds if any>
-- [ ] commit in the house style (see git log)
-
+## Acceptance / Definition of done — named tests green, ruff clean, agents run, PR opened
 ## Out of scope
-<what NOT to touch — keeps the slice clean>
 ```
 
-## 2. Model matching
+### Model matching (ambiguity × cost-of-error, not size)
+| Task shape | Model |
+|---|---|
+| Model **core** (`models/bespoke.py` floor/solve), convergence, the final decision, planning | **opus** |
+| Benchmark models, generator features, harness, metrics, scenarios — clear spec + tests as guardrails | **sonnet** |
+| Mechanical/templated — scenario config from a template, formatting, running tests, JSON boilerplate | **haiku** |
+Anything touching `models/bespoke.py`'s floor/solve is **opus**. When unsure, step up a tier.
 
-Match the model to the task's **ambiguity × cost-of-error**, not its size.
+## 4. Commands (`.claude/commands/`) — no hand-written prompts
+- **`/task <id>`** — full loop, stop before merge: load the task, branch from `main`, TDD to green,
+  `pytest`+`ruff`, run `invariant-auditor`/`spec-keeper` if required, flip the board row, **open a PR and
+  STOP** for approval.
+- **`/board`** — print the "Ready now" queue + in-flight rows (cross-checked against branches/PRs).
+- **`/task-new <desc>`** — scaffold a refined task file from the template + add a board row.
 
-| Task shape | Model | Why |
-|---|---|---|
-| Design/math, the **fairness floor**, convergence, any **invariant-critical** model change, synthesis & the final decision, planning | **opus** | High ambiguity, correctness-critical; a subtle error here is expensive and hard to spot. |
-| Standard implementation from a clear spec — **benchmark models** (MHR replica, ridge Massey), generator features (DC correction, trajectories, JSON), metrics, harness wiring, most TDD cycles | **sonnet** | Good judgment, cost-effective for well-scoped code with tests as guardrails. |
-| Mechanical / low-ambiguity — scenario config from a template, doc formatting, running tests & reporting results, boilerplate | **haiku** | Fast and cheap; the spec leaves little room for error. |
+## 5. Parallel vs sequential
+- **Default: sequential on trunk.** One task, one fresh chat, `/task <id>`. Zero collisions (one writer).
+  Fast enough for a solo spike. **Model-core work is always here.**
+- **Batch parallelism: an orchestrator** (the chosen model). When ≥2 **ready, parallel-safe, disjoint-file**
+  tasks exist, one orchestrator chat fans out **worktree-isolated subagents** (Agent `isolation:"worktree"`),
+  each running a task to green on its own branch and opening a PR (still stop-before-merge). The **harness
+  owns the worktree lifecycle**, so the v1 manual-worktree tangle can't recur. Use the Workflow tool for
+  larger fans. (An optional `/batch <ids>` command can wrap this later.)
+- **Never** parallelize tasks that share a file. Check the board's **Owns** column first.
 
-Rule of thumb: **anything that touches `models/bespoke.py`'s credit floor or the solve is opus.** Benchmarks
-and generators are sonnet. If a task can be written as "fill in this exact shape," it's haiku.
-When unsure, step up one tier — the tests catch mistakes, but not design drift.
+### Verification agents (run even on sequential work)
+- **`invariant-auditor`** — adversarially re-checks I1–I13 on any model change. Required after any
+  fairness-critical edit and after any model written by sonnet/haiku.
+- **`spec-keeper`** — flags drift from brief/memo (floor breach, double-counting, nondeterminism,
+  derived-data-as-input). Run before opening a model/generator PR.
 
-## 3. Subagents & parallelization — when it's safe
+## 6. De-contention (so parallel merges stay clean)
+- `pyproject.toml` uses **setuptools auto-discovery** — adding a module needs no shared edit.
+- Status lives in **`BOARD.md`** (single-writer rows), not in README prose. README links to the board.
+- The integration (merge) step flips a row to `done`; the task loop flips it to `in-progress`/`in-review`.
 
-Parallelism is in the **dev process**, never in the product: the rating model stays deterministic (I8).
+## 7. The loop, per task
+1. Fresh chat; set the model to the task's `Model`. 2. `/task <id>`. 3. It branches from `main`, runs TDD to
+green, runs the required agents, opens a PR, **stops**. 4. You review the PR summary in chat. 5. Approve →
+merge → delete branch → board row `done`.
 
-**Parallelize when ALL hold:**
-- ≥2 tasks that are genuinely **independent** — no shared files, no "B needs A's output."
-- Each writes to its **own file** (or its own `isolation: worktree`). Good fits: the 3 benchmark models,
-  generator features, per-scenario authoring — each lands in a distinct module.
-- Every agent's work is **gated by `pytest` + `ruff` before merge**; nothing merges red.
-
-**Do NOT parallelize:**
-- Edits to the **same file** — especially `models/bespoke.py`. Coupled invariants (I6/I7/I10 interact) go
-  sequentially, in one chat with the model's context.
-- Sequential chains (tiers depend on the solve; the comparison report depends on all models).
-- "Because we can." This codebase is small and determinism-sensitive; coordination cost can exceed the
-  benefit for tightly-coupled work. Fan out for breadth (many independent models/scenarios), not for depth.
-
-**Verification agents (use liberally, even on sequential work):**
-- `invariant-auditor` — adversarially re-checks I1–I13 on any model change. **Always run after a
-  fairness-critical edit**, and after any model written by sonnet/haiku.
-- `spec-keeper` — flags drift from the brief/memo (floor breaches, double-counting, nondeterminism,
-  derived-data-as-input). Run before merging model or generator work.
-
-**Safety floor:** all work is local code + tests; no outward/irreversible actions; commit only at green
-checkpoints; preserve determinism. A parallel agent that can't prove green doesn't merge.
-
-## 4. The loop, per task
-1. Open a new chat; **set the model to the task file's `Model:` field.** 2. Send the kickoff prompt below.
-3. It reads the references, branches from the named commit. 4. TDD red→green→refactor. 5. `pytest` + `ruff`
-green. 6. Run `invariant-auditor`/`spec-keeper` if the task says so. 7. Commit in house style. 8. Move the
-task file to `docs/work/done/`, update `README.md` status.
-
-### Kickoff prompt (fill in the filename)
-```
-Execute docs/work/todo/TASK-NN-<name>.md.
-
-Follow it exactly: read the "Read first" references, branch from the named commit,
-and work strictly TDD (write each test, watch it fail, then implement — no production
-code before a failing test). Keep going until the Definition of done is fully met:
-all named tests + full pytest green, ruff clean, the required invariant-auditor /
-spec-keeper runs done, committed in the house style, task file moved to
-docs/work/done/, and README status updated.
-
-Stay inside the task's scope. If you hit a genuine design decision the task doesn't
-resolve, stop and ask rather than guessing.
-```
-For a parallel-safe task, add: *"Touch only this task's own files; do not edit `models/bespoke.py` or `core/`."*
-To review before it codes (good for opus/critical-path tasks): *"First give me a short plan + the first
-failing test, and wait for my go."*
+## Postmortem — why v2 exists (v1 failure, kept as a guardrail)
+v1 said "parallel-safe = separate files" and stopped there. Running parallel chats then produced: two
+worktrees editing `models/bespoke.py` at once; a `master` left stale because nothing merged back; the task
+queue stranded on a feature branch so state was unknowable; and a hand-crafted prompt every time. The fix
+wasn't "more worktree rules" — it was a **clean trunk + an enforced integration step (PR→merge)**, a **single
+board** for state, **auto-isolated** parallelism via the orchestrator, and **`/task`** to kill prompt
+friction. Guardrail: if you ever can't answer "what's the state?" from one file, or two chats touch one file,
+stop — that's the v1 failure returning.

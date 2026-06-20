@@ -60,19 +60,22 @@ replica on rank-recovery. Benchmarks are *allowed* to fail invariants — that's
 - **`invariant-auditor`** (project agent) — adversarially verify a model against I1–I13.
 - **`spec-keeper`** (project agent) — review changes for drift from the brief/memo principles.
 
-## How we run the build (operating model)
-**[docs/planning/operating-model.md](docs/planning/operating-model.md)** governs task slicing, model
-matching, and parallelization. The essentials:
-- **One task = one chat.** Tasks live in `docs/work/todo/` as self-contained handoffs (see `INDEX.md` for
-  the queue + dependency/parallel map). A cold chat opens a task file and has everything it needs.
-- **Model matching:** anything touching `models/bespoke.py`'s floor/solve or the final decision → **opus**;
-  benchmark models, generator features, metrics, harness wiring → **sonnet**; mechanical/templated work
-  (scenario configs, formatting, test-running) → **haiku**. When unsure, step up a tier.
-- **Parallelize only** independent tasks on **separate files** (benchmarks, generator features, per-scenario
-  authoring), each gated green by `pytest`+`ruff` before merge. **Never** parallelize edits to `bespoke.py`
-  or coupled invariants. Run `invariant-auditor`/`spec-keeper` after model changes.
+## How we run the build (operating model v2)
+**[docs/planning/operating-model.md](docs/planning/operating-model.md)** is the full policy. The essentials:
+- **Trunk + PR.** `main` (on GitHub) is the single source of truth. Each task = a short-lived branch off
+  `main` → TDD to green → **PR** → chat-reviewed → merge → delete branch. Never leave work on a stale branch.
+- **State lives in [docs/work/BOARD.md](docs/work/BOARD.md)** — done / in-flight / **ready to pick up next**.
+  Task files are in `docs/work/tasks/`. One task = one fresh chat, **self-contained** (a missing-context chat
+  means fix the *task file*, not the prompt).
+- **Start a task with `/task <id>`** (no hand-written prompt); `/board` shows the ready queue; `/task-new`
+  scaffolds one.
+- **Model matching:** `models/bespoke.py` floor/solve + the final decision → **opus**; benchmarks, generator,
+  harness, metrics, scenarios → **sonnet**; mechanical/templated → **haiku**. When unsure, step up.
+- **Parallelize only** tasks with **disjoint Owns(files)** — via the orchestrator (worktree-isolated
+  subagents), never two chats on one working dir. `models/bespoke.py` work is **always sequential**. Run
+  `invariant-auditor`/`spec-keeper` after model changes.
 
 ## Documentation hygiene
 Keep the docs taxonomy alive as we build: design decisions → `docs/analysis/`, build/interface notes →
-`docs/implementation/`, plans/status → `docs/planning/`, reference facts → `docs/knowledge-bank/`,
-task tracking → `docs/work/{todo,ready,done}`. Update `README.md` status as phases complete.
+`docs/implementation/`, plans → `docs/planning/`, reference facts → `docs/knowledge-bank/`, task files →
+`docs/work/tasks/`. **Task status lives only in `docs/work/BOARD.md`** — update the board row, not README prose.

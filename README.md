@@ -17,7 +17,7 @@ Productionalization (real-data backtest, hosting, the public demo) comes after t
 | `docs/analysis/` | Design decisions & math. **[`decision-memo.md`](docs/analysis/decision-memo.md) is the Phase-0 gate.** |
 | `docs/implementation/` | Build notes, interface contracts, per-module design as code lands. |
 | `docs/knowledge-bank/` | Reference: the brief, observed tier data, source facts. |
-| `docs/work/{todo,ready,done}` | Task tracking through the lifecycle. |
+| `docs/work/` | **[`BOARD.md`](docs/work/BOARD.md)** = live task state (source of truth); `tasks/` = task files. |
 | `generator/` | Synthetic Dixon–Coles world model + scenario configs (seeded) → `data/*.json`. |
 | `models/` | Candidate raters behind one interface: `mhr_replica`, `ridge_massey`, `bespoke`. |
 | `harness/` | Invariant checks (I1–I13), truth-scoring, calibration. |
@@ -34,21 +34,15 @@ We tune the model until the invariants hold and rank-recovery is strong — neve
 ## Stack
 Python (numpy/scipy/pandas, pytest). The winning model gets ported to TypeScript during productionalization.
 
-## Where we are
-- [x] Plan locked — [`docs/planning/PLAN.md`](docs/planning/PLAN.md)
-- [x] **Phase 0: Decision memo** drafted, all tensions resolved, 4 design decisions made — [`docs/analysis/decision-memo.md`](docs/analysis/decision-memo.md) §11
-- [x] **Owner sign-off on the memo** + 4 design decisions
-- [x] **Phase 1: data contract** — Level-0 `GameRow` (outcome inferred, frozen) + Level-1 aggregator (folds the log, flips perspective, never trusts a summary). 14 tests, TDD.
-- [x] **Phase 2: synthetic generator (core)** — Poisson world model (`expected_goals`, seeded `draw_scoreline`) + `simulate(config)` → Level-0 rows + hidden ground truth. Deterministic, recovers true-strength signal. 15 tests, TDD. *Deferred until a scenario needs them: Dixon–Coles low-score correction, multi-week trajectories, §8 JSON serialization.*
-- [ ] **Phase 3/4: bespoke model, test-first against invariants** (in progress)
-  - [x] Per-game credit floor — `base + marginAdj + scheduleTerm`. **I1–I5 proven** (ordering, win-monotone, blowout cap, close-loss floor, tie placement). 7 tests.
-  - [x] Damped fixed-point `rate()` + `RateResult` interface. **I8** (byte-identical, order-independent) + **I9** (unique fixed point from any start) proven; recovers true order; ratings centered. 5 tests.
-  - [x] Cross-opponent: **I6** (close loss to elite > close win over weak — α pinned 0.6), **I7** (margin never flips a beaten opponent), **I10** (stale-opponent float / "Dallas"), **I12** (per-game attribution reconciles to rating exactly, via stored `center_offset`). 5 tests, TDD. *End-to-end I6 (Scenario 7) deferred to TASK-11 — see memo Q1 caveat.*
-  - [ ] Tiers + frozen window (I13), trend/recency (I11)
-- [x] **Phase 4: MHR replica benchmark** — AGD (avg goal-diff capped ±7) + SCHED (mean opponent
-  rating), iterative fixed-point solve, centered to mean 0. **I8** (byte-identical, order-independent)
-  + **I9** (unique fixed point from any start) proven; recovers gross strength order.
-  **I1 violation documented**: constructed a case where a team that *lost* to the shared opponent
-  outrates one that *won*, because season-wide AGD has no per-game result floor — the comparative
-  story motivating the bespoke floor. 6 tests.
-- [ ] Phase 5–6: scenarios → decide
+## Status & how we work
+Live task state — done / in-flight / **ready to pick up next** — lives on the board, not here (status prose
+churns and causes merge conflicts):
+
+➡ **[`docs/work/BOARD.md`](docs/work/BOARD.md)**
+
+How tasks are sliced, matched to a model, run on trunk, and (when safe) parallelized:
+**[`docs/planning/operating-model.md`](docs/planning/operating-model.md)**. Phase arc and scope:
+[`docs/planning/PLAN.md`](docs/planning/PLAN.md).
+
+High-level: data contract ✓ → generator ✓ → bespoke model (passing the §4 invariants; I1–I10/I12 done,
+I11/I13 next) → benchmarks (MHR ✓) → scenarios → pick the model.

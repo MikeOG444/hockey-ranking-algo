@@ -19,13 +19,14 @@ dev = [
   "ruff>=0.6",
 ]
 
-[tool.setuptools]
-# Flat functional layout per brief §10. Add packages as they land.
-packages = ["core", "generator", "models"]
+[tool.setuptools.packages.find]
+# Auto-discover packages (any dir with __init__.py). Adding a new module needs NO edit here — this is
+# what lets parallel tasks add modules without fighting over pyproject (operating-model §4 de-contention).
+exclude = ["docs*", "data*", "reports*", "scenarios*"]
 
 [tool.pytest.ini_options]
-# Determinism is sacred (I8): fixed test discovery, no surprises.
-testpaths = ["core", "harness", "generator", "models"]
+# Determinism is sacred (I8). No explicit testpaths: pytest auto-discovers test_*.py everywhere (it
+# ignores .venv/.git by default), so a new package's tests run without a shared-config edit.
 python_files = ["test_*.py"]
 addopts = "-q"
 
