@@ -22,7 +22,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 01 | Cross-opponent invariants (I6/I7/I10/I12) | **done** | opus | models/bespoke.py | no (core) | — |
 | 02 | MHR replica benchmark | **done** | sonnet | models/mhr_replica.py | yes | — |
 | 03 | Ridge Massey benchmark | **done** | sonnet | models/ridge_massey.py | yes | — |
-| 04 | Generator multi-week trajectories | **in-progress** | sonnet | generator/* | yes | — |
+| 04 | Generator multi-week trajectories | **in-review** | sonnet | generator/* | yes | — |
 | 05 | Tiers + frozen window (I13) | backlog | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
 | 06 | Trend + recency weighting (I11) | backlog | opus | models/bespoke.py | **no (core)** | 01 |
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | backlog | sonnet | harness/* | yes | 01,02 |
