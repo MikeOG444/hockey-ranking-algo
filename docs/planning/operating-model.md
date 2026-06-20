@@ -12,6 +12,13 @@ self-contained. Every task lives as a file in `docs/work/todo/` and moves to `do
 goal, **read-first references** (exact files + doc sections + the commit to branch from), TDD approach,
 acceptance criteria (named tests/invariants), model, parallel-safety, out-of-scope.
 
+> **Self-contained or it didn't happen.** A fresh chat cannot see *any* other chat — not the planning
+> chat that created the task, not a sibling task chat running in parallel. Anything that matters must live
+> in the task file or in a committed doc/commit it references. **Corollary:** when a task chat turns out to
+> be missing context, fix the *task file* (or the doc it points to) — never paper over it with a longer
+> kickoff prompt. The prompt is thrown away; the task file is read by the next chat too. A gap patched in
+> chat is a gap that reappears.
+
 ```markdown
 # TASK-NN: <title>
 **Status:** todo | in-progress | done
@@ -80,6 +87,25 @@ Parallelism is in the **dev process**, never in the product: the rating model st
 checkpoints; preserve determinism. A parallel agent that can't prove green doesn't merge.
 
 ## 4. The loop, per task
-1. Open a new chat; point it at the task file. 2. It reads the references, branches from the named commit.
-3. TDD red→green→refactor. 4. `pytest` + `ruff` green. 5. Run `invariant-auditor`/`spec-keeper` if the task
-says so. 6. Commit in house style. 7. Move the task file to `docs/work/done/`, update `README.md` status.
+1. Open a new chat; **set the model to the task file's `Model:` field.** 2. Send the kickoff prompt below.
+3. It reads the references, branches from the named commit. 4. TDD red→green→refactor. 5. `pytest` + `ruff`
+green. 6. Run `invariant-auditor`/`spec-keeper` if the task says so. 7. Commit in house style. 8. Move the
+task file to `docs/work/done/`, update `README.md` status.
+
+### Kickoff prompt (fill in the filename)
+```
+Execute docs/work/todo/TASK-NN-<name>.md.
+
+Follow it exactly: read the "Read first" references, branch from the named commit,
+and work strictly TDD (write each test, watch it fail, then implement — no production
+code before a failing test). Keep going until the Definition of done is fully met:
+all named tests + full pytest green, ruff clean, the required invariant-auditor /
+spec-keeper runs done, committed in the house style, task file moved to
+docs/work/done/, and README status updated.
+
+Stay inside the task's scope. If you hit a genuine design decision the task doesn't
+resolve, stop and ask rather than guessing.
+```
+For a parallel-safe task, add: *"Touch only this task's own files; do not edit `models/bespoke.py` or `core/`."*
+To review before it codes (good for opus/critical-path tasks): *"First give me a short plan + the first
+failing test, and wait for my go."*
