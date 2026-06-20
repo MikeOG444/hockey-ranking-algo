@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Regenerable synthetic data (reproducible from config + seed)
+data/*.json
+!data/README.md
+
+# Run outputs
+reports/*.html
+reports/*.png
+reports/*.csv
+
+# Claude Code — local personal settings (agents in .claude/agents/ ARE shared)
+.claude/settings.local.json
+
+# OS
+.DS_Store
