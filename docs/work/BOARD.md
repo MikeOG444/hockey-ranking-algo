@@ -18,15 +18,17 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ~~**TASK-12** comparison runner + invariant matrix + report — sonnet~~ (done, #10). Decision artifact written to `reports/comparison.md`: bespoke holds all I1–I13, but at current defaults does **not** yet beat MHR on mean Spearman (0.6811 vs 0.7769) — accuracy is now TASK-13's explicit tuning target.
 
-**TASK-13** Stage-A tuning of strawman params — opus · **in-review** (PR open). α re-derived against the
+~~**TASK-13** Stage-A tuning of strawman params — opus~~ (done, #11). α re-derived against the
 reachable gap (≈4.38) and shipped at **0.75** — the deliberately-red S07/I6 test is now green end-to-end,
 and α=0.75 is the argmax of the deterministic `harness/tune.py` rank-recovery sweep. **Honest-fallback
 outcome:** within the invariant-safe region bespoke improves (mean Spearman 0.6811 → 0.6928) but does
 **not** beat MHR (0.7769); the gate reads **FAIL** honestly. Residual diagnosed as (1) the S04/S11
 trajectory measurement artifact and (2) the structural fairness-floor cost on S05 (giant-killer) — no
-cherry-picking. Recommended follow-up: score trajectory scenarios against point-in-time truth.
+cherry-picking. **Recommended follow-up:** a new task to score trajectory scenarios (S04/S11) against
+point-in-time truth in `harness/metrics.py`/`scenarios` (removes the measurement artifact; the structural
+S05 gap is a deliberate cost of the fairness floor and stays).
 
-**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → 13 (in-review). Never parallelize the chain.
+**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → 13 ✅ — chain complete.
 
 ## Board
 
@@ -44,7 +46,7 @@ cherry-picking. Recommended follow-up: score trajectory scenarios against point-
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **done** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
-| 13 | Stage-A tuning of strawman params | **in-review** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
+| 13 | Stage-A tuning of strawman params | **done** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
