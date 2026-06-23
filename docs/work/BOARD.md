@@ -38,7 +38,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **done** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
-| 13 | Stage-A tuning of strawman params | **ready** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
+| 13 | Stage-A tuning of strawman params | **in-progress** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
