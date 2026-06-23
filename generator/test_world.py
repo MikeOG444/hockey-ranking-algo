@@ -12,7 +12,7 @@ import math
 import numpy as np
 import pytest
 
-from generator.world import draw_scoreline, expected_goals
+from generator.world import draw_scoreline, draw_scoreline_dc, expected_goals
 
 
 def test_baseline_rate_is_exp_mu():
@@ -74,3 +74,86 @@ def test_empirical_mean_recovers_lambda():
         team_goals[i], opp_goals[i] = draw_scoreline(rng, lam_team=2.5, lam_opp=1.5)
     assert team_goals.mean() == pytest.approx(2.5, abs=0.05)
     assert opp_goals.mean() == pytest.approx(1.5, abs=0.05)
+
+
+# --- Dixon-Coles low-score correction tests --------------------------------
+
+
+def test_rho_zero_is_identical_to_current():
+    """Regression guard (TASK-08): rho=0 must produce byte-identical draws to draw_scoreline.
+
+    The correction vanishes at rho=0 (tau=1 for all low-score pairs), so draw_scoreline_dc
+    must call the same underlying Poisson draws in the same order as draw_scoreline.
+    """
+    n = 500
+    seed = 99
+    old_draws = [
+        draw_scoreline(np.random.default_rng(seed + i), lam_team=3.0, lam_opp=2.0)
+        for i in range(n)
+    ]
+    new_draws = [
+        draw_scoreline_dc(np.random.default_rng(seed + i), lam_team=3.0, lam_opp=2.0, rho=0.0)
+        for i in range(n)
+    ]
+    assert old_draws == new_draws, "rho=0 path must be byte-identical to draw_scoreline"
+
+
+def test_correction_reduces_zero_zero_frequency():
+    """DC correction with rho=0.08 must suppress 0-0 draws below independent-Poisson expectation.
+
+    For neutral teams at lambda=3 each, independent Poisson gives P(0-0) = exp(-6) ≈ 0.00248.
+    The correction (rho > 0) reduces tau(0,0) = 1 - lambda1*lambda2*rho < 1, so (0,0) pairs
+    are rejected more often and the empirical frequency must fall clearly below exp(-6).
+    We require the empirical frequency < 0.9 * P_indep (i.e. at least 10% reduction).
+    """
+    import math
+
+    rho = 0.08
+    lam = 3.0
+    n = 50_000
+    rng = np.random.default_rng(2024)
+    zero_zero = sum(
+        1
+        for _ in range(n)
+        if draw_scoreline_dc(rng, lam_team=lam, lam_opp=lam, rho=rho) == (0, 0)
+    )
+    empirical_freq = zero_zero / n
+    p_indep = math.exp(-2 * lam)  # exp(-6) ≈ 0.00248
+    assert empirical_freq < 0.9 * p_indep, (
+        f"Expected 0-0 frequency below {0.9 * p_indep:.5f} with rho={rho}; "
+        f"got {empirical_freq:.5f} ({zero_zero} in {n} draws)"
+    )
+
+
+def test_correction_deterministic():
+    """Same seed + same rho → byte-identical draw sequence (I8 determinism)."""
+    n = 1_000
+    seed = 42
+    a = [
+        draw_scoreline_dc(np.random.default_rng(seed + i), lam_team=3.0, lam_opp=3.0, rho=0.08)
+        for i in range(n)
+    ]
+    b = [
+        draw_scoreline_dc(np.random.default_rng(seed + i), lam_team=3.0, lam_opp=3.0, rho=0.08)
+        for i in range(n)
+    ]
+    assert a == b, "draw_scoreline_dc must be deterministic given the same seed"
+
+
+def test_invalid_rho_raises():
+    """Out-of-range rho must raise ValueError.
+
+    Valid range: 0 <= rho < 1/(lam_team * lam_opp). For lam=3: upper bound ≈ 0.111.
+    Negative rho and rho at/above the upper bound are both invalid.
+    """
+    rng = np.random.default_rng(0)
+    lam = 3.0
+
+    # Negative rho is always invalid.
+    with pytest.raises(ValueError, match="rho"):
+        draw_scoreline_dc(rng, lam_team=lam, lam_opp=lam, rho=-0.01)
+
+    # rho exactly at the upper bound makes tau(0,0) = 0, which is degenerate.
+    upper = 1.0 / (lam * lam)
+    with pytest.raises(ValueError, match="rho"):
+        draw_scoreline_dc(rng, lam_team=lam, lam_opp=lam, rho=upper)
