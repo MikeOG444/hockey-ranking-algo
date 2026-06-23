@@ -40,7 +40,15 @@ class CreditBreakdown:
 
 @dataclass(frozen=True)
 class BespokeParams:
-    """Strawman parameterization (memo §9), to be tuned in Stage A."""
+    """Stage-A-tuned parameterization (memo §9, tuned in TASK-13).
+
+    The structural fields (W/T/L floor, the margin-bucket bonus/penalty tables, the tier modulators)
+    are the memo strawman unchanged — they are what make I1–I5/I7 hold by construction, so they are
+    *not* a tuning surface. The single value Stage A moved is ``alpha`` (0.6 → 0.75): re-derived
+    against the solver's reachable converged spread so end-to-end I6 holds, and the argmax of the
+    `harness/tune.py` rank-recovery sweep. ``rho``/``rho_tier`` (on `rate_weekly`) stay at the memo
+    0.2 — also the sweep's pick, and kept off 0 so the I11 trend feature survives.
+    """
 
     win: float = 3.0
     tie: float = 1.0
@@ -48,11 +56,16 @@ class BespokeParams:
     # Margin bonus for wins (diminishing, capped) and penalty for losses (close = 0, increasing).
     win_bonus: dict[str, float] = field(default_factory=lambda: {"close": 0.0, "3": 0.6, "4": 0.9, "5+": 1.0})
     loss_penalty: dict[str, float] = field(default_factory=lambda: {"close": 0.0, "3": 0.5, "4": 0.8, "5+": 1.0})
-    # Strength of the schedule (play-up / play-down) signal. Derived, not guessed (memo Q1): I6
-    # pins it just above (W - L) / (elite - field gap). For the canonical +4 / -2 example that gap
-    # is 6, so alpha=0.5 ties (0.5*6 == W-L == 3) and fails I6; alpha=0.6 clears it with margin
-    # (0.6*6 = 3.6 > 3). Still a contraction for I9 since alpha*(1-lam) = 0.6*0.95 = 0.57 < 1.
-    alpha: float = 0.6
+    # Strength of the schedule (play-up / play-down) signal. DERIVED against the solver's
+    # *reachable* converged spread, not a hand-picked example (memo Q1; tuned in TASK-13). End-to-end
+    # I6 needs alpha*(R_TOP - R_BOTTOM) > W - L = 3; on the Scenario-7 league the centered spread
+    # converges to R_TOP - R_BOTTOM ≈ 4.38, so the threshold is alpha ≈ 3/4.38 ≈ 0.69 — the
+    # hand-picked +4/-2 (gap 6) alpha=0.6 is *below* it and inverts I6 end-to-end (the S07 red).
+    # alpha=0.75 clears I6 with margin (credit(loss→elite) 1.67 > credit(win→weak) 1.42 on the
+    # converged ratings) AND is the Stage-A sweep's argmax for mean rank recovery over the scorable
+    # §7 scenarios (harness/tune.py). Still a contraction for I9: alpha*(1-lam) = 0.75*0.95 = 0.71
+    # < 1. Confirming test: scenarios/test_s07_close_vs_tier.py (green at this shipped default).
+    alpha: float = 0.75
     # Tier modulators (memo §1.2, §4): scale the *margin adjustment* by the OPPONENT's frozen tier
     # — never `base`. Indexed by (tier - 1); tier 3 is the neutral baseline (m = p = 1.0) so the
     # I1-I5 credit tests, which fix opp_tier=3, are untouched. Beating up a tier (lower index)
