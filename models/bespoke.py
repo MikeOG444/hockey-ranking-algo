@@ -12,10 +12,11 @@ Per-game credit is an additive decomposition so the fairness floor is structural
   same opponent, so it never threatens I1, yet still rewards playing up / debits playing down (I6/I10).
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from core.game import GameRow
+from models.tiers import TierWindow, detect_tiers
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,31 @@ class BespokeParams:
     # is 6, so alpha=0.5 ties (0.5*6 == W-L == 3) and fails I6; alpha=0.6 clears it with margin
     # (0.6*6 = 3.6 > 3). Still a contraction for I9 since alpha*(1-lam) = 0.6*0.95 = 0.57 < 1.
     alpha: float = 0.6
+    # Tier modulators (memo §1.2, §4): scale the *margin adjustment* by the OPPONENT's frozen tier
+    # — never `base`. Indexed by (tier - 1); tier 3 is the neutral baseline (m = p = 1.0) so the
+    # I1-I5 credit tests, which fix opp_tier=3, are untouched. Beating up a tier (lower index)
+    # raises the win bonus and softens the loss penalty (p < 1); playing down does the reverse.
+    # These stay orthogonal to `scheduleTerm` (Q3): strength-of-schedule lives there, "how margin
+    # reads by tier" lives here — we never pay for opponent strength twice.
+    tier_m: tuple[float, ...] = (1.3, 1.15, 1.0, 0.85)  # win-bonus scale; tier 3 = 1.0 (neutral)
+    tier_p: tuple[float, ...] = (0.7, 0.85, 1.0, 1.15)  # loss-penalty scale; tier 3 = 1.0 (neutral)
+    tier_default_m: float = 0.7  # beyond the table (the deep field): smallest bonus for beating it
+    tier_default_p: float = 1.3  # beyond the table: harshest penalty for losing to it
+
+    def m_for(self, tier_float: float) -> float:
+        """Win-bonus modulator for an opponent at (possibly fractional) ``tier_float``.
+
+        Round to the nearest integer tier, clamp at the top (tier 1), and read the table; tiers
+        beyond the table fall back to ``tier_default_m``. Always >= 0 so the bonus sign can't flip.
+        """
+        t = max(1, round(tier_float))
+        return self.tier_m[t - 1] if t <= len(self.tier_m) else self.tier_default_m
+
+    def p_for(self, tier_float: float) -> float:
+        """Loss-penalty modulator (same rounding/clamp rules as :meth:`m_for`). Always >= 0, so
+        scaling a (negative) loss penalty never flips it positive → I4 holds structurally."""
+        t = max(1, round(tier_float))
+        return self.tier_p[t - 1] if t <= len(self.tier_p) else self.tier_default_p
 
 
 def margin_bucket(margin_abs: int) -> str:
@@ -86,6 +112,26 @@ def base_and_margin(goals_for: int, goals_against: int, params: BespokeParams) -
     return base, margin_adj
 
 
+def scaled_margin(
+    raw_margin: float, result: str, opp_tier: float | None, params: BespokeParams
+) -> float:
+    """Apply the opponent's tier modulator to a raw (signed) margin adjustment (memo §1.2).
+
+    `raw_margin` is the opponent-independent adjustment from `base_and_margin` (>= 0 for a win,
+    <= 0 for a loss, 0 for a tie). We scale the *win bonus* by `m(tier)` and the *loss penalty* by
+    `p(tier)`; both modulators are >= 0, so the sign never flips (I4) and `base` is never involved
+    (I1/I7). `opp_tier is None` is the cold-start signal (memo §5): credit tier-agnostically with
+    m = p = 1, i.e. leave the raw margin alone.
+    """
+    if opp_tier is None:
+        return raw_margin
+    if result == "W":
+        return raw_margin * params.m_for(opp_tier)
+    if result == "L":
+        return raw_margin * params.p_for(opp_tier)
+    return 0.0  # tie: no adjustment (I5)
+
+
 def per_game_credit(
     goals_for: int,
     goals_against: int,
@@ -97,9 +143,13 @@ def per_game_credit(
     """One game's credit from a team's perspective.
 
     The schedule term is the opponent's CURRENT rating scaled by alpha (strength of schedule,
-    floating per I10) — result-independent, so it never disturbs same-opponent ordering (I1).
+    floating per I10) — result-independent, so it never disturbs same-opponent ordering (I1). The
+    margin adjustment is scaled by the opponent's tier modulator (memo §1.2): playing up raises the
+    win bonus / softens the loss penalty, always on the adjustment and never on `base`.
     """
-    base, margin_adj = base_and_margin(goals_for, goals_against, params)
+    base, raw_margin = base_and_margin(goals_for, goals_against, params)
+    result = classify(goals_for, goals_against)
+    margin_adj = scaled_margin(raw_margin, result, opp_tier, params)
     schedule_term = params.alpha * opp_rating
     return CreditBreakdown(base=base, margin_adj=margin_adj, schedule_term=schedule_term)
 
@@ -133,6 +183,105 @@ def _teams_of(games: Iterable[GameRow]) -> list[str]:
     return sorted(seen)  # deterministic team order (I8)
 
 
+# A per-team perspective entry: (base, raw_margin, opponent_id, result). Both base and the *raw*
+# (un-modulated) margin are kept separate so the same entries drive the solve and the attribution
+# (I12) without recomputing the floor; `result` lets a tier-aware caller scale the margin by the
+# opponent's frozen tier without re-deriving W/L/T.
+_Entry = tuple[float, float, str, str]
+# Maps (raw_margin, result, opponent_id) -> the effective margin to use this solve. `rate` passes
+# the identity (no tiers); `rate_weekly` passes one that applies the frozen-tier modulator.
+_MarginFn = Callable[[float, str, str], float]
+
+
+def _build_entries(games: list[GameRow], params: BespokeParams) -> tuple[list[str], dict[str, list[_Entry]]]:
+    """Both sides of every game, grouped per team, in a canonical order (I8 determinism)."""
+    teams = _teams_of(games)
+    entries: dict[str, list[_Entry]] = {t: [] for t in teams}
+    for g in games:
+        b, m = base_and_margin(g.goals_team, g.goals_opponent, params)
+        entries[g.team].append((b, m, g.opponent, classify(g.goals_team, g.goals_opponent)))
+        b, m = base_and_margin(g.goals_opponent, g.goals_team, params)
+        entries[g.opponent].append((b, m, g.team, classify(g.goals_opponent, g.goals_team)))
+    # Canonical summation order so the result is byte-identical regardless of input order (I8).
+    for t in teams:
+        entries[t].sort(key=lambda e: (e[2], e[0], e[1]))
+    return teams, entries
+
+
+def _solve(
+    teams: list[str],
+    entries: dict[str, list[_Entry]],
+    params: BespokeParams,
+    margin_fn: _MarginFn,
+    *,
+    lam: float,
+    tol: float,
+    max_iter: int,
+    init: Mapping[str, float] | None,
+) -> dict[str, float]:
+    """Damped batch fixed-point iteration:
+
+        r_i <- (1 - lam) * mean_g[ base_g + margin_fn(...) + alpha * r_opp ]   (then re-center)
+
+    Per game `base + margin_fn(...)` is constant; only the schedule term re-rates each pass. With
+    lam>0 and alpha<1 the map is a contraction -> a unique fixed point from any start (I8/I9). The
+    tier modulators inside `margin_fn` are non-negative scalars on a constant, so they never enter
+    the alpha coupling and the contraction argument (memo §3) is unchanged.
+    """
+    r = {t: 0.0 for t in teams}
+    if init is not None:
+        r = {t: float(init.get(t, 0.0)) for t in teams}
+    for _ in range(max_iter):
+        new = {}
+        for t in teams:
+            ent = entries[t]
+            if not ent:
+                new[t] = 0.0
+                continue
+            total = 0.0
+            for base, raw_margin, opp, result in ent:
+                total += base + margin_fn(raw_margin, result, opp) + params.alpha * r[opp]
+            new[t] = (1.0 - lam) * (total / len(ent))
+        mean = sum(new.values()) / len(new)
+        for t in teams:
+            new[t] -= mean  # re-center (gauge fix + regularization target)
+        delta = max(abs(new[t] - r[t]) for t in teams)
+        r = new
+        if delta < tol:
+            break
+    return r
+
+
+def _attribute(
+    teams: list[str],
+    entries: dict[str, list[_Entry]],
+    r: dict[str, float],
+    params: BespokeParams,
+    margin_fn: _MarginFn,
+    lam: float,
+) -> tuple[dict[str, list[CreditBreakdown]], dict[str, float], float]:
+    """Replay each team's games against the converged ratings to record the three named drivers
+    (I12), then rebuild ratings from them so `rating == (1-lam)*mean(total) - center_offset` is
+    exact, not merely within tolerance (memo §7). Uses opponents' FINAL ratings → I10."""
+    attribution: dict[str, list[CreditBreakdown]] = {}
+    pre: dict[str, float] = {}
+    for t in teams:
+        ent = entries[t]
+        breakdowns = [
+            CreditBreakdown(
+                base=base,
+                margin_adj=margin_fn(raw_margin, result, opp),
+                schedule_term=params.alpha * r[opp],
+            )
+            for base, raw_margin, opp, result in ent
+        ]
+        attribution[t] = breakdowns
+        pre[t] = (1.0 - lam) * (sum(bd.total for bd in breakdowns) / len(ent)) if ent else 0.0
+    center_offset = sum(pre.values()) / len(pre)
+    ratings = {t: pre[t] - center_offset for t in teams}
+    return attribution, ratings, center_offset
+
+
 def rate(
     games: Iterable[GameRow],
     params: BespokeParams | None = None,
@@ -142,79 +291,93 @@ def rate(
     max_iter: int = 1000,
     init: Mapping[str, float] | None = None,
 ) -> RateResult:
-    """Solve season ratings as the fixed point of a damped batch iteration:
+    """Flat, single-pass season solve with NO tier modulation (the tier-agnostic baseline).
 
-        r_i <- (1 - lam) * mean_g[ const_g + alpha * r_opp ]   (+ lam * mean, which is 0 after centering)
-
-    `const_g` (base + margin) is fixed per game; only the schedule term re-rates each pass. With lam>0
-    and alpha<1 the map is a contraction -> a unique fixed point reached from any start (I8/I9). Ratings
-    are re-centered to mean 0 each pass (they are relative), which also pins the gauge on disconnected
-    graphs together with the pull toward the mean.
+    Solves the damped fixed point over all games at once. `tiers`/`trend` are left empty here;
+    the tier-aware per-week solve is `rate_weekly`. Deterministic and order-independent (I8/I9).
     """
     params = params or BespokeParams()
-    games = list(games)
-    teams = _teams_of(games)
-
-    # Per-team perspective entries: (base, margin, opponent_id). Both sides of every game. We keep
-    # base and margin separate (not pre-summed) so the same entries drive both the solve and the
-    # per-game attribution (I12) without recomputing the floor.
-    entries: dict[str, list[tuple[float, float, str]]] = {t: [] for t in teams}
-    for g in games:
-        b, m = base_and_margin(g.goals_team, g.goals_opponent, params)
-        entries[g.team].append((b, m, g.opponent))
-        b, m = base_and_margin(g.goals_opponent, g.goals_team, params)
-        entries[g.opponent].append((b, m, g.team))
-    # Canonical summation order so the result is byte-identical regardless of input order (I8).
-    for t in teams:
-        entries[t].sort(key=lambda e: (e[2], e[0], e[1]))
-
-    r = {t: 0.0 for t in teams}
-    if init is not None:
-        r = {t: float(init.get(t, 0.0)) for t in teams}
-
-    for _ in range(max_iter):
-        new = {}
-        for t in teams:
-            ent = entries[t]
-            if not ent:
-                new[t] = 0.0
-                continue
-            total = 0.0
-            for base, margin, opp in ent:
-                total += base + margin + params.alpha * r[opp]
-            new[t] = (1.0 - lam) * (total / len(ent))
-        mean = sum(new.values()) / len(new)
-        for t in teams:
-            new[t] -= mean  # re-center (gauge fix + regularization target)
-        delta = max(abs(new[t] - r[t]) for t in teams)
-        r = new
-        if delta < tol:
-            break
-
-    # Attribution pass (I12): with the ratings converged, replay each team's games once more to
-    # record the three named drivers per game, using opponents' FINAL ratings for the schedule term.
-    # The same algebra as a solve step (pre-center value = (1-lam)*mean of breakdown totals) then a
-    # single shared centering offset; we rebuild ratings from these so the reconciliation
-    # `rating == (1-lam)*mean(breakdown.total) - center_offset` is exact, not merely within tolerance.
-    # The breakdown already splits result-driven credit (base + margin_adj) from schedule-driven
-    # credit (schedule_term); the weekly result-vs-schedule *delta* split (memo §7) waits on the
-    # per-week solve that arrives with tiers/trend (TASK-05/06).
-    attribution: dict[str, list[CreditBreakdown]] = {}
-    pre: dict[str, float] = {}
-    for t in teams:
-        ent = entries[t]
-        breakdowns = [
-            CreditBreakdown(base=base, margin_adj=margin, schedule_term=params.alpha * r[opp])
-            for base, margin, opp in ent
-        ]
-        attribution[t] = breakdowns
-        pre[t] = (1.0 - lam) * (sum(bd.total for bd in breakdowns) / len(ent)) if ent else 0.0
-    center_offset = sum(pre.values()) / len(pre)
-    ratings = {t: pre[t] - center_offset for t in teams}
-
+    teams, entries = _build_entries(list(games), params)
+    identity_margin: _MarginFn = lambda raw, result, opp: raw  # noqa: E731 — no tiers in flat rate
+    r = _solve(teams, entries, params, identity_margin, lam=lam, tol=tol, max_iter=max_iter, init=init)
+    attribution, ratings, center_offset = _attribute(teams, entries, r, params, identity_margin, lam)
     return RateResult(
         ratings=ratings,
         tiers={},
+        per_game_attribution=attribution,
+        trend={},
+        center_offset=center_offset,
+    )
+
+
+def rate_weekly(
+    games: Iterable[GameRow],
+    params: BespokeParams | None = None,
+    *,
+    tier_count: int | str = "auto",
+    gap_c: float = 2.0,
+    max_window: int = 4,
+    rho_tier: float = 0.2,
+    lam: float = 0.05,
+    tol: float = 1e-12,
+    max_iter: int = 1000,
+) -> RateResult:
+    """Tier-aware season solve (memo §5): walk weeks in order with a frozen-tier window.
+
+    For each week W (ascending — I8):
+      a. read every team's FROZEN tier from the ≤``max_window`` prior finalized weeks (recency-
+         weighted, ``rho_tier``); a team with no usable history reads ``None`` → tier-agnostic
+         (m = p = 1) credit for that game;
+      b. run the damped fixed-point solve on ALL games through week W, applying the tier modulator
+         to each game's margin via the opponent's frozen tier;
+      c. derive week W's tiers from the converged ratings (natural gaps, §4) and push them into the
+         window for later weeks to read.
+
+    **Cold start (memo §5):** the window only modulates once **>= 2 finalized weeks** exist, so
+    weeks 1-2 run tier-agnostic (a single provisional pass); the frozen window activates from week 3.
+    A one-week tier blip in an opponent is averaged across the window, so the credit it confers this
+    week moves only a bounded, damped amount → I13. The final week's solve produces the returned
+    ratings/tiers/attribution; `trend` stays empty (TASK-06).
+
+    **`rho_tier` (= 0.2, ~3.5-week half-life)** follows memo §9 (`ρ_tier = ρ`, half-life 3-4 weeks),
+    NOT the task-template placeholder of 1.0. With a ~1-week half-life the most recent finalized week
+    dominates the read regardless of `max_window`, so a longer window cannot damp a single-week blip
+    and I13's "windowed freeze does not whipsaw" claim fails on the shipped default. The gentler memo
+    decay lets older weeks dilute a blip, which is what makes the window length actually matter (the
+    brief §7 scenario-13 sweep). Owner-confirmed (2026-06-22). Stage-B may retune within 0.1-0.4.
+    """
+    params = params or BespokeParams()
+    games = list(games)
+    weeks = sorted({g.week for g in games})
+    window = TierWindow(max_weeks=max_window)
+
+    attribution: dict[str, list[CreditBreakdown]] = {}
+    ratings: dict[str, float] = {}
+    tiers: dict[str, int] = {}
+    center_offset = 0.0
+
+    # Count weeks *finalized so far*, not weeks the window retains: with a short window (e.g.
+    # max_window=1) the window holds one week yet history may still be long enough to activate.
+    n_finalized = 0
+    for w in weeks:
+        teams_w, entries_w = _build_entries([g for g in games if g.week <= w], params)
+        # Cold start: need >= 2 finalized weeks before the frozen window is trustworthy (memo §5),
+        # so weeks 1-2 run tier-agnostic and the window activates from week 3 regardless of length.
+        active = n_finalized >= 2
+        frozen = {t: (window.frozen_tier(t, rho=rho_tier) if active else None) for t in teams_w}
+
+        def margin_fn(raw: float, result: str, opp: str, _frozen: dict = frozen) -> float:
+            return scaled_margin(raw, result, _frozen.get(opp), params)
+
+        r = _solve(teams_w, entries_w, params, margin_fn, lam=lam, tol=tol, max_iter=max_iter, init=None)
+        attribution, ratings, center_offset = _attribute(teams_w, entries_w, r, params, margin_fn, lam)
+        tiers = detect_tiers(ratings, tier_count=tier_count, gap_c=gap_c)
+        window.add_week(w, tiers)
+        n_finalized += 1
+
+    return RateResult(
+        ratings=ratings,
+        tiers=tiers,
         per_game_attribution=attribution,
         trend={},
         center_offset=center_offset,
