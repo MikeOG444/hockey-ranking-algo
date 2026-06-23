@@ -31,7 +31,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | **done** | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | **done** | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | **done** | haiku | generator/io.py | yes | — |
-| 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **ready** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
+| 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **in-progress** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | backlog | sonnet | reports/*, harness/run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
