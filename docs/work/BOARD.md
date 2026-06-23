@@ -11,9 +11,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now (deps met — needs `/task-new <id>` to refine, then `/task <id>` to run)
 
-- **TASK-06** trend + recency weighting (I11) — opus — **sequential (no parallel)** — refined & ready; next in the core-model chain; run with `/task 06`
-
-The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other and with TASK-06.
+The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other.
 
 - **TASK-07** model-agnostic invariant harness — sonnet — critical path (blocks 12)
 - **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
@@ -21,7 +19,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 - **TASK-08** Dixon–Coles low-score correction — sonnet
 - **TASK-09** JSON serialization — haiku
 
-**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → **06 (next)** → 13. Never parallelize.
+**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → **13 (next)**. 13 is blocked on 11 + 12; never parallelize the chain.
 
 ## Board
 
@@ -32,7 +30,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 03 | Ridge Massey benchmark | **done** | sonnet | models/ridge_massey.py | yes | — |
 | 04 | Generator multi-week trajectories | **done** | sonnet | generator/* | yes | — |
 | 05 | Tiers + frozen window (I13) | **done** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
-| 06 | Trend + recency weighting (I11) | **in-review** | opus | models/bespoke.py, models/test_bespoke_rate.py, models/test_bespoke_trend.py | **no (core)** | 01,05 |
+| 06 | Trend + recency weighting (I11) | **done** | opus | models/bespoke.py, models/test_bespoke_rate.py, models/test_bespoke_trend.py | **no (core)** | 01,05 |
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | backlog | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | backlog | haiku | generator/io.py | yes | — |
@@ -42,7 +40,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
 
 ## Notes
-- **Sequential chain on the model core** (own `models/bespoke.py`): 05 → 06 → 13. Never parallelize these.
+- **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
 - 08 depends on 04 (both touch `generator/world.py`) → run after 04 merges, not beside it.
 - To refine a backlog item into a full task file: `/task-new <id or description>` (writes
   `docs/work/tasks/TASK-NN-*.md` from the template, flips the row to `refined`).
