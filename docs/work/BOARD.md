@@ -31,7 +31,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 04 | Generator multi-week trajectories | **done** | sonnet | generator/* | yes | — |
 | 05 | Tiers + frozen window (I13) | **done** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
 | 06 | Trend + recency weighting (I11) | **done** | opus | models/bespoke.py, models/test_bespoke_rate.py, models/test_bespoke_trend.py | **no (core)** | 01,05 |
-| 07 | Model-agnostic invariant harness (I1–I13 runner) | backlog | sonnet | harness/* | yes | 01,02 |
+| 07 | Model-agnostic invariant harness (I1–I13 runner) | **in-progress** | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | backlog | haiku | generator/io.py | yes | — |
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | backlog | sonnet | harness/metrics.py | yes | — |
