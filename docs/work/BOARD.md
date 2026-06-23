@@ -11,6 +11,8 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now
 
+~~**TASK-14** point-in-time truth for trajectory scenarios — sonnet.~~ (in-review — PR open)
+
 ~~**TASK-10** truth-scoring metrics — sonnet~~ (done)
 
 ~~**TASK-08** Dixon–Coles low-score correction — sonnet~~ (done)
@@ -47,6 +49,7 @@ S05 gap is a deliberate cost of the fairness floor and stays).
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | **done** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
+| 14 | Point-in-time truth for trajectory scenarios | **in-review** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.

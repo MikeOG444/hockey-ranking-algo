@@ -90,3 +90,49 @@ def test_report_is_deterministic() -> None:
     assert "PASS" in first
     assert "T_SUBJECT" in first  # the attribution example header
     assert "TASK-13" in first    # the Option-B rationale routes accuracy tuning to TASK-13
+
+
+def test_trajectory_scenarios_scored_against_point_in_time_truth() -> None:
+    """run_rank_recovery scores S04/S11 against point-in-time truth, not the static key.
+
+    Under the static key S11 bespoke gets Spearman −0.5 (backwards: the model correctly
+    ranks the rising team above the falling one, but the static answer key disagrees).
+    After wiring in point-in-time truth, S11 bespoke Spearman must be > −0.5 (i.e. no
+    longer the backwards score). Static scenarios (e.g. S07, all-flat teams) score
+    identically to before — we assert S07 bespoke Spearman stays positive.
+    """
+    r = run_rank_recovery()
+
+    # S11: with point-in-time truth RISER is correctly ranked above FALLER at end-of-season,
+    # so bespoke's current-form call should yield a positive Spearman (not the old ~-0.5).
+    s11_bespoke_rho = r["S11"]["bespoke"].spearman_rho
+    assert s11_bespoke_rho > 0.0, (
+        f"S11 bespoke Spearman should be > 0.0 with point-in-time truth, got {s11_bespoke_rho:.4f}. "
+        "Under static key it was ~-0.5 (the trajectory artifact); this confirms the fix landed."
+    )
+
+    # S07: all-flat teams → static and point-in-time truth are identical → score is unchanged.
+    s07_bespoke_rho = r["S07"]["bespoke"].spearman_rho
+    assert s07_bespoke_rho > 0.0, (
+        f"S07 bespoke Spearman should remain positive (flat scenario, static truth), "
+        f"got {s07_bespoke_rho:.4f}"
+    )
+
+
+def test_gate_verdict_is_computed_not_asserted() -> None:
+    """gate_verdict is derived from the recomputed means, not prose-asserted.
+
+    After TASK-14 the trajectory correction may flip the gate to PASS (or keep it FAIL —
+    we do not hard-code which). We assert: the boolean equals the mean comparison, and
+    that the verdict is consistent with the actual score values.
+    """
+    matrix = run_invariant_matrix()
+    recovery = run_rank_recovery()
+    v = gate_verdict(matrix, recovery)
+
+    # The boolean must be consistent with the computed means.
+    assert v.bespoke_beats_mhr == (v.mean_spearman["bespoke"] > v.mean_spearman["mhr"]), (
+        "bespoke_beats_mhr must equal (mean bespoke > mean mhr), not be hard-coded"
+    )
+    # Fairness half still holds (model unchanged).
+    assert v.bespoke_all_invariants_pass is True
