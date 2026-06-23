@@ -16,7 +16,9 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 ~~**TASK-08** Dixon–Coles low-score correction — sonnet~~ (done)
 ~~**TASK-09** JSON serialization — haiku~~ (done)
 
-**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → **13 (next)**. 13 is blocked on 11 + 12; never parallelize the chain.
+**TASK-12** comparison runner + invariant matrix + report — sonnet · **ready** (deps 02/03/05/06/07/10 all done). The decision artifact; run before TASK-13.
+
+**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → **13**. 13 is blocked on 11 ✅ + 12; never parallelize the chain.
 
 ## Board
 
@@ -33,7 +35,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 09 | §8 JSON serialization (dataset ↔ json) | **done** | haiku | generator/io.py | yes | — |
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **done** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
-| 12 | Comparison runner + invariant matrix + report | backlog | sonnet | reports/*, harness/run.py | no | 02,03,05,06,07,10 |
+| 12 | Comparison runner + invariant matrix + report | **in-review** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
 
 ## Notes
