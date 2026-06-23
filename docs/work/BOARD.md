@@ -11,11 +11,10 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now
 
-**Needs `/task-new` to refine before executing (all parallel-safe with each other):**
+- **TASK-10** truth-scoring metrics — sonnet — `harness/metrics.py` + `harness/test_metrics.py` — critical path (blocks 12)
 
-- **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
-- ~~**TASK-08** Dixon–Coles low-score correction — sonnet~~ (done)
-- ~~**TASK-09** JSON serialization — haiku~~ (done)
+~~**TASK-08** Dixon–Coles low-score correction — sonnet~~ (done)
+~~**TASK-09** JSON serialization — haiku~~ (done)
 
 **Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → **13 (next)**. 13 is blocked on 11 + 12; never parallelize the chain.
 
@@ -32,7 +31,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | **done** | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | **done** | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | **done** | haiku | generator/io.py | yes | — |
-| 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | backlog | sonnet | harness/metrics.py | yes | — |
+| 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **in-review** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | backlog | sonnet | reports/*, harness/run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
