@@ -18,7 +18,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ~~**TASK-12** comparison runner + invariant matrix + report — sonnet~~ (done, #10). Decision artifact written to `reports/comparison.md`: bespoke holds all I1–I13, but at current defaults does **not** yet beat MHR on mean Spearman (0.6811 vs 0.7769) — accuracy is now TASK-13's explicit tuning target.
 
-**TASK-13** Stage-A tuning of strawman params — opus · **backlog** (deps 11 ✅ + 12 ✅ now done). Next up, but needs refining into a task file first (`/task-new 13`). Owns `models/bespoke.py` → sequential core work.
+**TASK-13** Stage-A tuning of strawman params — opus · **ready** (deps 11 ✅ + 12 ✅; task file refined: `docs/work/tasks/TASK-13-stage-a-tuning.md`). The spike's decision task: re-derive α against the reachable gap (≈4.38) to turn the deliberately-red S07/I6 test green, then tune (α, ρ, tier strength) to **beat MHR** on mean Spearman — invariant safety is a hard constraint, no cherry-picking. Owns `models/bespoke.py` → sequential core work. Start with `/task 13`.
 
 **Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → **13**. 13's deps (11 ✅, 12 ✅) are met; never parallelize the chain.
 
@@ -38,7 +38,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | **done** | sonnet | harness/metrics.py, harness/test_metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
-| 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
+| 13 | Stage-A tuning of strawman params | **ready** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
