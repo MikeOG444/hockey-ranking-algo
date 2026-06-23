@@ -61,7 +61,7 @@ S05 gap is a deliberate cost of the fairness floor and stays).
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | **done** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
 | 14 | Point-in-time truth for trajectory scenarios | **done** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
-| 15 | Real MHR data loader + data-quality report | **in-review** | sonnet | ingest/* (new), data/real/* (new), reports/real-data-quality.md (new) | yes (additive) | — |
+| 15 | Real MHR data loader + data-quality report | **done** | sonnet | ingest/* (new), data/real/* (new), reports/real-data-quality.md (new) | yes (additive) | — |
 | 16 | Head-to-head agreement + giant-killer case studies (real) | **refined** (blocked on 15) | sonnet | analysis/* (new), reports/real-h2h.md (new) | yes (after 15) | 15 |
 
 ## Notes
