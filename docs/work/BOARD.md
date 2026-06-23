@@ -11,6 +11,17 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now
 
+**TASK-15** real MHR data loader + data-quality report — sonnet. Convert the external top-50 per-team JSON
+dump (USA 11U AAA 2025–26) into one §8 Level-0 dataset the existing raters can consume, plus a generated
+quality report. Core job is a **validated dedup**: games are listed per-team, so the 1,044 intra-top-50
+matchups each appear twice (mirror-checked: 0 score mismatches) while 1,086 games vs outside teams appear
+once → **2,130 unique games**. Also derives the two missing Level-0 fields — **week** (week 1 ≤ 2025-09-09,
+then Wed→Tue buckets) and a **year** on the bare date (Aug–Dec→2025, Jan–Jul→2026). **Keeps** the 215
+outside-top-50 opponents for schedule strength. **Purely additive** — new `ingest/` package + `data/real/`
++ a new report; touches no model/generator/harness/scenario, so **parallel-safe** with anything. Runs
+**no model and no accuracy metric** (real data has no planted truth — the comparison yardstick is a
+deliberate follow-up). No deps. First **Stage-B** step (formally a scope expansion past the synthetic spike).
+
 ~~**TASK-14** point-in-time truth for trajectory scenarios — sonnet.~~ (done, #12)
 
 ~~**TASK-10** truth-scoring metrics — sonnet~~ (done)
@@ -49,11 +60,9 @@ S05 gap is a deliberate cost of the fairness floor and stays).
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | **done** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
-<<<<<<< HEAD
-| 14 | Point-in-time truth for trajectory scenarios | **ready** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
-=======
 | 14 | Point-in-time truth for trajectory scenarios | **done** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
->>>>>>> origin/main
+| 15 | Real MHR data loader + data-quality report | **in-review** | sonnet | ingest/* (new), data/real/* (new), reports/real-data-quality.md (new) | yes (additive) | — |
+| 16 | Head-to-head agreement + giant-killer case studies (real) | **refined** (blocked on 15) | sonnet | analysis/* (new), reports/real-h2h.md (new) | yes (after 15) | 15 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
@@ -68,3 +77,10 @@ S05 gap is a deliberate cost of the fairness floor and stays).
 - **Scenario 13 / freeze-window damping:** At `rho_tier=0.2`, windowed damping is structural but modest
   (~1.7% swing reduction, window=1 → window=4). The directional assertion holds; the 50% bound from the
   task spec assumes sharper `rho_tier`. TASK-13 may revisit if stronger damping is needed.
+- **Stage-B begins at TASK-15.** The synthetic spike is complete (fairness solved I1–I13; accuracy a near-tie
+  vs the MHR replica — the one residual loss, S05/giant-killer, is exactly where real MHR is itself fooled by
+  schedule padding, e.g. Dallas Stars Elite #12 on a 7-9-1 ranked record). Full phased arc:
+  **[`docs/planning/stage-b-plan.md`](../planning/stage-b-plan.md)** (B1 data → B2 head-to-head/case studies
+  → B3 prediction surface → B4 walk-forward → B5 prediction metrics → B6 trust layer → B7 demo). TASK-15 = B1;
+  TASK-16 = B2. The non-obvious gate is **B3**: bespoke emits ratings, not probabilities, and every
+  prediction metric needs a probability — nothing in B4–B6 works until that link is built.
