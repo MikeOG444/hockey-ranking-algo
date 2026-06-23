@@ -9,13 +9,13 @@ See `docs/planning/operating-model.md` for how tasks flow. Start one with `/task
 **Parallel rule:** two tasks may run concurrently only if their **Owns (files)** sets are disjoint.
 Anything owning `models/bespoke.py` is **sequential** — never run two of those at once.
 
-## ▶ Ready now (deps met — needs `/task-new <id>` to refine, then `/task <id>` to run)
+## ▶ Ready now (refined + deps met — run with `/task <id>`)
 
-The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other.
+- **TASK-11** scenario suite §7 — sonnet — critical path (blocks 13) — **in-review** (PR #6)
 
-- **TASK-07** model-agnostic invariant harness — sonnet — critical path (blocks 12)
+**Still needs `/task-new` to refine before executing:**
+
 - **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
-- **TASK-11** scenario suite §7 — sonnet — critical path (blocks 13)
 - **TASK-08** Dixon–Coles low-score correction — sonnet
 - **TASK-09** JSON serialization — haiku
 
@@ -31,11 +31,11 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 04 | Generator multi-week trajectories | **done** | sonnet | generator/* | yes | — |
 | 05 | Tiers + frozen window (I13) | **done** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
 | 06 | Trend + recency weighting (I11) | **done** | opus | models/bespoke.py, models/test_bespoke_rate.py, models/test_bespoke_trend.py | **no (core)** | 01,05 |
-| 07 | Model-agnostic invariant harness (I1–I13 runner) | **in-review** | sonnet | harness/* | yes | 01,02 |
+| 07 | Model-agnostic invariant harness (I1–I13 runner) | **done** | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | backlog | haiku | generator/io.py | yes | — |
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | backlog | sonnet | harness/metrics.py | yes | — |
-| 11 | Scenario suite §7 | backlog | sonnet | scenarios/* | yes (per scenario) | 04 |
+| 11 | Scenario suite §7 | **in-review** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | backlog | sonnet | reports/*, harness/run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
 
@@ -45,3 +45,9 @@ The following are unblocked but still `backlog` — refine before executing. All
 - To refine a backlog item into a full task file: `/task-new <id or description>` (writes
   `docs/work/tasks/TASK-NN-*.md` from the template, flips the row to `refined`).
 - The integration (merge) step flips a row to `done`; the task's own loop flips it to `in-progress`/`in-review`.
+- **α finding (from TASK-11 Scenario 7):** At the solver's reachable spread (R_TOP − R_BOTTOM ≈ 4.38), I6
+  requires α ≥ 0.69 (not 0.60). At α=0.8 it passes. TASK-13 must re-derive α against the reachable gap
+  before locking the strawman params. See `scenarios/test_s07_close_vs_tier.py` for the exact values.
+- **Scenario 13 / freeze-window damping:** At `rho_tier=0.2`, windowed damping is structural but modest
+  (~1.7% swing reduction, window=1 → window=4). The directional assertion holds; the 50% bound from the
+  task spec assumes sharper `rho_tier`. TASK-13 may revisit if stronger damping is needed.
