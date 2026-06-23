@@ -11,7 +11,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now (deps met — needs `/task-new <id>` to refine, then `/task <id>` to run)
 
-- **TASK-06** trend + recency weighting (I11) — opus — **sequential (no parallel)** — next in the core-model chain; refine with `/task-new 06`, then `/task 06`
+- **TASK-06** trend + recency weighting (I11) — opus — **sequential (no parallel)** — refined & ready; next in the core-model chain; run with `/task 06`
 
 The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other and with TASK-06.
 
@@ -32,7 +32,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 03 | Ridge Massey benchmark | **done** | sonnet | models/ridge_massey.py | yes | — |
 | 04 | Generator multi-week trajectories | **done** | sonnet | generator/* | yes | — |
 | 05 | Tiers + frozen window (I13) | **done** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
-| 06 | Trend + recency weighting (I11) | backlog | opus | models/bespoke.py | **no (core)** | 01 |
+| 06 | Trend + recency weighting (I11) | **ready** | opus | models/bespoke.py, models/test_bespoke_rate.py, models/test_bespoke_trend.py | **no (core)** | 01,05 |
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | backlog | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | backlog | haiku | generator/io.py | yes | — |
