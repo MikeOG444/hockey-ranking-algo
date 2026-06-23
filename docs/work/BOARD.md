@@ -9,11 +9,9 @@ See `docs/planning/operating-model.md` for how tasks flow. Start one with `/task
 **Parallel rule:** two tasks may run concurrently only if their **Owns (files)** sets are disjoint.
 Anything owning `models/bespoke.py` is **sequential** — never run two of those at once.
 
-## ▶ Ready now (refined + deps met — run with `/task <id>`)
+## ▶ Ready now
 
-- **TASK-11** scenario suite §7 — sonnet — critical path (blocks 13) — **in-review** (PR #6)
-
-**Still needs `/task-new` to refine before executing:**
+**Needs `/task-new` to refine before executing (all parallel-safe with each other):**
 
 - **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
 - **TASK-08** Dixon–Coles low-score correction — sonnet
@@ -35,7 +33,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | backlog | haiku | generator/io.py | yes | — |
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | backlog | sonnet | harness/metrics.py | yes | — |
-| 11 | Scenario suite §7 | **in-review** | sonnet | scenarios/* | yes (per scenario) | 04 |
+| 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | backlog | sonnet | reports/*, harness/run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | backlog | opus | models/bespoke.py | no (core) | 11,12 |
 
