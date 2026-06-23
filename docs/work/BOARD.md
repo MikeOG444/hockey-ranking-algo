@@ -11,14 +11,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now
 
-**TASK-14** point-in-time truth for trajectory scenarios — sonnet. Score S04/S11 against
-end-of-season **point-in-time** truth (`generator.week_params`) instead of the season-*average* static
-rating, removing the measurement artifact TASK-13 diagnosed (`reports/comparison.md` §4 "Cause 1" — S11
-bespoke −0.50 is the correct current-form call mis-graded by a season-average key). Pure measurement
-change: **does not touch `models/bespoke.py` or the generator/builders**; owns `harness/metrics.py`+test,
-`harness/run.py`+test, `reports/comparison.md`. The residual **S05** giant-killer gap stays — it's a
-deliberate structural cost of the fairness floor, not a measurement choice. **Sequential** (re-scores
-every model + regenerates the artifact). Deps 10/11/12/13 all done.
+~~**TASK-14** point-in-time truth for trajectory scenarios — sonnet.~~ (in-review — PR open)
 
 ~~**TASK-10** truth-scoring metrics — sonnet~~ (done)
 

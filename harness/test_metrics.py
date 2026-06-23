@@ -8,6 +8,7 @@ import math
 
 from harness.metrics import (
     centered_rmse,
+    point_in_time_truth,
     score_model,
     spearman_rho,
     tier_accuracy,
@@ -155,3 +156,135 @@ def test_score_model_end_to_end():
     )
     # Flat rate() emits empty tiers → no tier scoring
     assert mr.n_tiers_scored == 0, f"Expected n_tiers_scored=0 for flat solve, got {mr.n_tiers_scored}"
+
+
+# ---------------------------------------------------------------------------
+# Point-in-time truth tests (TASK-14)
+# ---------------------------------------------------------------------------
+
+
+def test_point_in_time_truth_equals_static_for_flat_teams():
+    """For an all-flat ground_truth, point_in_time_truth equals {t.id: t.rating} exactly.
+
+    A flat team's week_params returns the raw baseline attack/defense, so
+    attack − defense == TeamParams.rating for every n_weeks. This is the byte-identical
+    guarantee: static-scenario scores cannot move when trajectory detection is wired in.
+    """
+    from generator.simulate import TeamParams
+
+    ground_truth = [
+        TeamParams(id="A", attack=1.0, defense=0.5),   # rating = 0.5, flat
+        TeamParams(id="B", attack=0.5, defense=1.0),   # rating = -0.5, flat
+        TeamParams(id="C", attack=0.8, defense=0.8),   # rating = 0.0, flat
+    ]
+    pit = point_in_time_truth(ground_truth, n_weeks=6)
+
+    for t in ground_truth:
+        assert abs(pit[t.id] - t.rating) < 1e-12, (
+            f"Team {t.id}: point-in-time {pit[t.id]} != static {t.rating}"
+        )
+
+
+def test_point_in_time_truth_tracks_end_of_season_form_for_drifting_teams():
+    """For a rising/falling symmetric pair, point_in_time_truth inverts the static ranking.
+
+    Mirror of S11's construction: RISER starts weak (low baseline attack), rises each week;
+    FALLER starts at RISER's endpoint (high baseline attack), falls each week. Because
+    TeamParams.rating is the *baseline* (week-1) value:
+      - static truth: FALLER > RISER (FALLER has the higher starting attack)
+      - end-of-season truth (week n_weeks): RISER > FALLER (their roles have swapped)
+
+    This is the exact artifact the task fixes: a recency-aware model that correctly tracks
+    current form is scored *backwards* by the season-average static key.
+    """
+    from generator.simulate import TeamParams, _TRAJ_STEP
+
+    n_weeks = 8
+    A = 0.25
+    faller_start = -A + (n_weeks - 1) * _TRAJ_STEP   # = 0.10; RISER ends here after n_weeks-1 rises
+
+    ground_truth = [
+        TeamParams(id="RISER",  attack=-A,           defense=0.0, trajectory="rising"),
+        TeamParams(id="FALLER", attack=faller_start, defense=0.0, trajectory="falling"),
+    ]
+
+    # Static key: FALLER has the higher baseline attack, so static truth ranks FALLER > RISER.
+    static_riser  = ground_truth[0].rating   # = -A = -0.25
+    static_faller = ground_truth[1].rating   # = faller_start = +0.10
+    assert static_faller > static_riser, (
+        f"Test setup: static truth should have FALLER ({static_faller}) > RISER ({static_riser})"
+    )
+
+    # Point-in-time key at last week: RISER has risen to faller_start; FALLER has fallen to -A.
+    # Correct end-of-season ordering is RISER > FALLER (inverted from static).
+    pit = point_in_time_truth(ground_truth, n_weeks=n_weeks)
+    assert pit["RISER"] > pit["FALLER"], (
+        f"Expected RISER ({pit['RISER']:.4f}) > FALLER ({pit['FALLER']:.4f}) at end-of-season"
+    )
+
+
+def test_score_model_default_path_is_unchanged():
+    """score_model with no truth_ratings kwarg returns the same result as today on a flat scenario.
+
+    Regression guard: the optional truth_ratings arg defaults to None → static behaviour exactly.
+    Both calls must return byte-identical MetricsResult.
+    """
+    from generator.simulate import TeamParams
+    from models.bespoke import RateResult
+
+    ground_truth = [
+        TeamParams(id="X", attack=1.0, defense=0.0),   # rating +1.0, flat
+        TeamParams(id="Y", attack=0.0, defense=1.0),   # rating -1.0, flat
+    ]
+    result = RateResult(
+        ratings={"X": 0.8, "Y": -0.8},
+        tiers={},
+        per_game_attribution={},
+        trend={},
+        center_offset=0.0,
+    )
+
+    # No kwarg → static default path
+    mr_default = score_model(ground_truth, result)
+    # Explicit None → same path
+    mr_explicit = score_model(ground_truth, result, truth_ratings=None)
+
+    assert mr_default == mr_explicit, "Default and explicit-None truth_ratings must produce identical results"
+    # Spearman should be +1.0 (X above Y in both true and model).
+    assert abs(mr_default.spearman_rho - 1.0) < 1e-9, (
+        f"Expected spearman_rho=1.0 for aligned flat scenario, got {mr_default.spearman_rho}"
+    )
+
+
+def test_score_model_uses_truth_override_when_supplied():
+    """score_model with truth_ratings override scores Spearman/RMSE against the override, not static ratings.
+
+    With static ratings X=+1, Y=-1 the model (X=0.5, Y=-0.5) gives rho=+1. When we supply a
+    reversed truth override (X=-1, Y=+1) the rho becomes -1. Tier scoring is not affected by the
+    override (still uses TeamParams.tier).
+    """
+    from generator.simulate import TeamParams
+    from models.bespoke import RateResult
+
+    ground_truth = [
+        TeamParams(id="X", attack=1.0, defense=0.0),   # static rating +1.0
+        TeamParams(id="Y", attack=0.0, defense=1.0),   # static rating -1.0
+    ]
+    result = RateResult(
+        ratings={"X": 0.5, "Y": -0.5},
+        tiers={},
+        per_game_attribution={},
+        trend={},
+        center_offset=0.0,
+    )
+
+    # Static: X above Y in both truth and model → rho = +1.
+    mr_static = score_model(ground_truth, result)
+    assert abs(mr_static.spearman_rho - 1.0) < 1e-9
+
+    # Override truth to be reversed: now truth ranks Y above X → rho = -1.
+    reversed_truth = {"X": -1.0, "Y": 1.0}
+    mr_override = score_model(ground_truth, result, truth_ratings=reversed_truth)
+    assert abs(mr_override.spearman_rho - (-1.0)) < 1e-9, (
+        f"Expected spearman_rho=-1.0 with reversed truth override, got {mr_override.spearman_rho}"
+    )

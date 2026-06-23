@@ -44,7 +44,7 @@ Each model rates every scenario's Level-0 games; the recovered ratings are score
 | S08 | 1.0000 | 1.0000 | 1.0000 | — |
 | S09 | 0.9286 | 1.0000 | 1.0000 | yes |
 | S10 | 1.0000 | 1.0000 | 1.0000 | — |
-| S11 | -0.5000 | -0.1000 | -0.1000 | yes |
+| S11 | 0.7000 | 0.3000 | 0.3000 | yes |
 | S12 | 1.0000 | 1.0000 | 1.0000 | yes |
 | S13 | 0.9286 | 0.8810 | 0.8810 | yes |
 
@@ -57,14 +57,14 @@ Scenarios marked *scorable* have planted ratings with real spread; the degenerat
 | S01 | 0.5185 | 1.0076 | 1.1047 |
 | S02 | 0.5866 | 1.4207 | 2.0546 |
 | S03 | 0.5760 | 2.2585 | 2.8588 |
-| S04 | 1.0261 | 2.1647 | 2.2878 |
+| S04 | 1.0538 | 2.2171 | 2.3465 |
 | S05 | 0.5463 | 0.6858 | 0.9659 |
 | S06 | 1.1335 | 1.1321 | 1.6838 |
 | S07 | 0.5965 | 1.2730 | 8.5555 |
 | S08 | 0.7196 | 0.7165 | 0.7376 |
 | S09 | 0.4579 | 1.8468 | 2.4548 |
 | S10 | 0.0000 | 0.0000 | 0.0000 |
-| S11 | 0.3153 | 0.2510 | 0.2572 |
+| S11 | 0.2082 | 0.1901 | 0.1955 |
 | S12 | 1.9094 | 0.3781 | 0.8079 |
 | S13 | 0.4390 | 2.1035 | 2.4879 |
 
@@ -79,7 +79,7 @@ Tier accuracy is **0.0000 for every model on every scenario**, for a structural 
 - **Scorable scenarios** (11): S01, S02, S03, S04, S05, S06, S07, S09, S11, S12, S13
 - **Excluded (degenerate truth)** (2): S08, S10
 
-- **Headline mean Spearman ρ** (scorable only) — bespoke **0.6928** · mhr 0.7769 · ridge 0.7477
+- **Headline mean Spearman ρ** (scorable only) — bespoke **0.8019** · mhr 0.8133 · ridge 0.7841
 
 - **Half 1 — bespoke holds every invariant I1–I13:** PASS
 - **Half 2 — bespoke beats the MHR replica on mean rank recovery:** FAIL
@@ -87,20 +87,27 @@ Tier accuracy is **0.0000 for every model on every scenario**, for a structural 
 
 ## 4. Why the accuracy half reads as it does (the honest call)
 
-Bespoke wins **fairness** outright (every invariant I1–I13) and, after Stage-A tuning (TASK-13: α re-derived to 0.75, ρ = ρ_tier = 0.2), improves on its untuned mean rank recovery (0.6811 → 0.6928) — but still does **not** beat the MHR replica (0.7769). That residual gap is reported honestly rather than engineered away, and it decomposes into two diagnosed causes:
+Bespoke wins **fairness** outright (every invariant I1–I13) and, after Stage-A tuning (TASK-13: α re-derived to 0.75, ρ = ρ_tier = 0.2) and the trajectory-truth correction (TASK-14: S04/S11 now scored against point-in-time end-of-season truth), improves significantly on its TASK-13 mean rank recovery (0.6928 → 0.8019) — but still does **not** beat the MHR replica (0.8133). That residual gap is reported honestly rather than engineered away. The two diagnosed causes from TASK-13 are revisited below:
 
-**Cause 1 — a measurement artifact (trajectory scenarios S04, S11).** The truth-scorer grades each team against its *static* planted rating (`attack − defense`). Where the generator drifts a team week-by-week, that static value is the season *average*, not the team's realized end-of-season form. Bespoke's recency weighting is *built* to track current form (that is what I11 demands), so on those scenarios it is scored backwards — e.g. S11 (momentum): bespoke -0.5000 vs mhr -0.1000: ranking the rising team above the falling one is the correct *current-form* call but disagrees with the season-average answer key. Turning ρ down would 'fix' the score by killing the I11 feature — forbidden. The right fix is to score these scenarios against *point-in-time* truth (a metric/scenario change bespoke's tuning task does not own → recommended follow-up, see §6).
+**Cause 1 — trajectory measurement artifact (S04, S11) — RESOLVED by TASK-14.** The truth-scorer originally graded drifting teams against their *static* planted rating (`attack − defense`), which is the season *average*, not end-of-season form. Bespoke's recency weighting (I11) correctly tracks current form, so on those scenarios it was scored backwards under the static key. TASK-14 corrects this by scoring trajectory scenarios against *point-in-time* truth (the generator's `week_params` value at the last finalized week — pure generator ground truth, never a recovered rating, so the observed-vs-derived wall (brief §5) and determinism (I8) are fully preserved). The before/after for S11 (the starkest case):
 
-**Cause 2 — a structural cost of fairness (giant-killer scenario S05).** Here bespoke trails most: 0.3571 vs mhr 0.9048. A genuinely weak team (`T_LUCKY`) pads wins against weak opponents; bespoke's **base floor guarantees a win out-credits a loss vs the same opponent (I1)**, so it cannot fully discount those lucky wins, while MHR's pure goal-differential least-squares simply regresses them away. This is the fairness/accuracy trade-off the model makes *by design* — it is not removable by tuning a constant without breaking the floor, so it is left as-is, not engineered around.
+| S11 (momentum) | bespoke | mhr |
+|---|---|---|
+| Static key (season-average truth, TASK-13 era) | -0.5000 | -0.1000 |
+| Point-in-time truth (end-of-season form, TASK-14) | 0.7000 | 0.3000 |
 
-**No principled exclusion flips the verdict** — even setting the trajectory artifact aside, the gap (now driven by S05) is real, not a slicing trick:
+The residual gap is now driven entirely by Cause 2.
+
+**Cause 2 — a structural cost of fairness (giant-killer scenario S05) — remains by design.** Bespoke trails most on S05: 0.3571 vs mhr 0.9048. A genuinely weak team (`T_LUCKY`) pads wins against weak opponents; bespoke's **base floor guarantees a win out-credits a loss vs the same opponent (I1)**, so it cannot fully discount those lucky wins, while MHR's pure goal-differential least-squares simply regresses them away. This is the fairness/accuracy trade-off the model makes *by design* — it is not removable by tuning a constant without breaking the floor, and is *expected to remain*.
+
+**No principled exclusion flips the verdict** — the remaining gap is driven by S05 (structural, not a metric artifact):
 
 | Scenarios counted in the mean | bespoke | mhr | bespoke ahead? |
 |---|---|---|---|
-| All scorable (degenerate truth S08, S10 excluded) | 0.6928 | 0.7769 | no |
+| All scorable (degenerate truth S08, S10 excluded) | 0.8019 | 0.8133 | no |
 | Also set aside trajectory scenarios (S04, S11) | 0.8229 | 0.8893 | no |
 
-**Decision (honest-fallback, no cherry-picking).** Stage-A tuning did its job — α is re-derived so I6 now holds end-to-end, and the tuned defaults lift several static scenarios (S01, S02, S04, S13 now beat MHR) — but on the full scorable set bespoke still trails, so the gate reads **FAIL** honestly rather than slicing the scenario set until bespoke 'wins'. The residual is the two diagnosed causes above: a measurement artifact (addressable by a point-in-time-truth follow-up) and a deliberate structural cost of the fairness floor (S05). Fairness is solved; the remaining accuracy gap is characterised, not hidden.
+**Decision (honest-fallback, no cherry-picking).** Stage-A tuning and the point-in-time truth correction both did their jobs — α holds I6 end-to-end, the trajectory artifact is removed, and the mean Spearman lifts substantially — but on the full scorable set bespoke still trails, so the gate reads **FAIL** honestly. The sole remaining cause is the deliberate structural cost of the fairness floor (S05). Fairness is solved; the accuracy gap is characterised and its cause is structural, not hidden.
 
 ## 5. Per-game attribution example — `T_SUBJECT` (scenario S07)
 
@@ -119,5 +126,5 @@ In plain English: the **base** result (win = 3, loss = 0) is a floor nothing can
 
 - **End-to-end I6 is resolved (α re-derived, TASK-13).** At the solver's reachable converged spread (R_TOP − R_BOTTOM ≈ 4.38) the old α = 0.60 inverted I6 (0.60 × 4.38 = 2.63 < 3.00). α is now derived against that real gap and tuned to **0.75** (threshold ≈ 0.69; 0.75 × 4.38 ≈ 3.29 > 3.00), so a narrow loss to the elite out-credits a narrow win over the bottom **end-to-end** — the S07 scenario test is green at the shipped default. Still a contraction for I9 (0.75 × 0.95 = 0.71 < 1). See decision memo §11 Q1.
 - **Parameters are Stage-A-tuned (TASK-13).** This snapshot runs at the tuned defaults (α = 0.75, ρ = ρ_tier = 0.2, tier table unchanged) — the argmax of the `harness/tune.py` rank-recovery sweep within the invariant-safe region. The full sweep is reproducible via `python -m harness.tune`.
-- **Recommended follow-up — point-in-time truth for trajectory scenarios.** The residual rank-recovery gap on S04/S11 is a *measurement* artifact: a recency-aware model is graded against each team's season-*average* static rating. Scoring those scenarios against point-in-time truth (a `harness/metrics.py` / `scenarios` change, owned by TASK-10/11, not by the tuning task) would remove the artifact. Filed as the natural next task.
+- **DONE — point-in-time truth for trajectory scenarios (TASK-14).** S04/S11 are now scored against `week_params(team, last_week).rating` — the generator's end-of-season realized form — instead of the static season-average `TeamParams.rating`. For flat teams `week_params` returns the raw baseline, so all-flat scenario scores are byte-identical to before. The trajectory measurement artifact diagnosed in TASK-13 is removed. The remaining accuracy gap is the deliberate structural cost of the fairness floor (S05 — Cause 2 in §4), which is expected to remain.
 - **Stage B is out of scope** (walk-forward / log-loss / calibration on real data).
