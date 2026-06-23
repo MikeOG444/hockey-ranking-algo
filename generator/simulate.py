@@ -12,7 +12,7 @@ from datetime import date, timedelta
 import numpy as np
 
 from core.game import GameRow
-from generator.world import draw_scoreline, expected_goals
+from generator.world import draw_scoreline_dc, expected_goals
 
 # League calendar anchor: week 1 begins here; each week is 7 days later. Deterministic, no "now".
 _SEASON_START = date(2025, 9, 29)  # a Monday
@@ -56,6 +56,7 @@ class WorldConfig:
     schedule: list[Matchup]
     seed: int
     mu: float = math.log(3.0)  # league baseline scoring level (~3 goals between neutral teams)
+    rho: float = 0.0  # Dixon-Coles low-score correction strength; 0.0 = independent Poisson (I8)
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,7 @@ def simulate(config: WorldConfig) -> Dataset:
         q_atk, q_def = week_params(q, m.week)
         lam_team = expected_goals(p_atk, q_def, config.mu)
         lam_opp = expected_goals(q_atk, p_def, config.mu)
-        g_team, g_opp = draw_scoreline(rng, lam_team, lam_opp)
+        g_team, g_opp = draw_scoreline_dc(rng, lam_team, lam_opp, config.rho)
         games.append(
             GameRow(
                 week=m.week,
