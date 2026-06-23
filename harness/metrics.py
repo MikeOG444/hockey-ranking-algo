@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from generator.simulate import TeamParams
+from generator.simulate import TeamParams, week_params
 from models.bespoke import RateResult
 
 
@@ -84,21 +84,57 @@ def tier_accuracy(true_tiers: dict[str, int], model_tiers: dict[str, int]) -> fl
     return best / len(common)
 
 
+def point_in_time_truth(
+    ground_truth: list[TeamParams],
+    n_weeks: int,
+) -> dict[str, float]:
+    """Return each team's realized end-of-season rating via the generator's week_params.
+
+    For a flat team week_params returns the raw baseline (attack, defense), so
+    attack − defense == TeamParams.rating — static scenarios score byte-identically.
+    For a drifting team (rising/falling/blip) this returns the end-of-season form,
+    which is the correct truth for a recency-aware model (I11).
+
+    This is generator ground truth accessed through week_params — it is never a
+    recovered model rating fed back in (observed-vs-derived wall, brief §5). week_params
+    is a pure function (no RNG, no wall-clock), so determinism (I8) is preserved.
+    """
+    result: dict[str, float] = {}
+    for t in ground_truth:
+        atk, dfn = week_params(t, n_weeks)
+        result[t.id] = atk - dfn
+    return result
+
+
 def score_model(
     ground_truth: list[TeamParams],
     result: RateResult,
+    truth_ratings: dict[str, float] | None = None,
 ) -> MetricsResult:
     """Score a RateResult against the generator's planted ground truth.
 
     Only teams present in both ground_truth (by .id) and result.ratings (by key) are
     included. n_teams records the intersection size. Teams with TeamParams.tier=None are
     excluded from tier scoring; if result.tiers is empty, n_tiers_scored is 0.
+
+    truth_ratings — optional override for Spearman/RMSE comparison. When provided,
+    these values replace the static TeamParams.rating for each team. Tier scoring always
+    uses the static TeamParams.tier (tier labels don't drift week to week). Pass
+    point_in_time_truth(ground_truth, n_weeks) here for trajectory scenarios.
+    Default None → today's static behaviour exactly (no existing test moves).
     """
     true_map = {t.id: t for t in ground_truth}
     common = sorted(set(true_map) & set(result.ratings))
     n_teams = len(common)
 
-    true_ratings = {k: true_map[k].rating for k in common}
+    # Use the caller-supplied truth override when provided; fall back to static rating.
+    # truth_ratings must cover every team in common — a missing key is a caller contract
+    # violation (point_in_time_truth always covers all ground_truth teams, so this can't
+    # fire in production, but a KeyError here is better than a silently biased metric).
+    if truth_ratings is not None:
+        true_ratings = {k: truth_ratings[k] for k in common}
+    else:
+        true_ratings = {k: true_map[k].rating for k in common}
     model_ratings_sub = {k: result.ratings[k] for k in common}
 
     # True tiers restricted to teams with non-None true tier in the intersection.

@@ -11,14 +11,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now
 
-**TASK-14** point-in-time truth for trajectory scenarios — sonnet. Score S04/S11 against
-end-of-season **point-in-time** truth (`generator.week_params`) instead of the season-*average* static
-rating, removing the measurement artifact TASK-13 diagnosed (`reports/comparison.md` §4 "Cause 1" — S11
-bespoke −0.50 is the correct current-form call mis-graded by a season-average key). Pure measurement
-change: **does not touch `models/bespoke.py` or the generator/builders**; owns `harness/metrics.py`+test,
-`harness/run.py`+test, `reports/comparison.md`. The residual **S05** giant-killer gap stays — it's a
-deliberate structural cost of the fairness floor, not a measurement choice. **Sequential** (re-scores
-every model + regenerates the artifact). Deps 10/11/12/13 all done.
+~~**TASK-14** point-in-time truth for trajectory scenarios — sonnet.~~ (done, #12)
 
 ~~**TASK-10** truth-scoring metrics — sonnet~~ (done)
 
@@ -56,7 +49,11 @@ S05 gap is a deliberate cost of the fairness floor and stays).
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
 | 12 | Comparison runner + invariant matrix + report | **done** | sonnet | reports/*, harness/run.py, harness/test_run.py | no | 02,03,05,06,07,10 |
 | 13 | Stage-A tuning of strawman params | **done** | opus | models/bespoke.py, models/test_bespoke_tuning.py, harness/tune.py, harness/test_tune.py, reports/comparison.md | no (core) | 11,12 |
+<<<<<<< HEAD
 | 14 | Point-in-time truth for trajectory scenarios | **ready** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
+=======
+| 14 | Point-in-time truth for trajectory scenarios | **done** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
+>>>>>>> origin/main
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
