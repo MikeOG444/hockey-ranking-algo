@@ -11,9 +11,9 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now (deps met — needs `/task-new <id>` to refine, then `/task <id>` to run)
 
-- **TASK-05** tiers + frozen window (I13) — opus — **sequential (no parallel)** — _in-review (PR open from `task/tiers-frozen-window`)_
+- **TASK-06** trend + recency weighting (I11) — opus — **sequential (no parallel)** — next in the core-model chain; refine with `/task-new 06`, then `/task 06`
 
-The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other and with TASK-05.
+The following are unblocked but still `backlog` — refine before executing. All parallel-safe with each other and with TASK-06.
 
 - **TASK-07** model-agnostic invariant harness — sonnet — critical path (blocks 12)
 - **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
@@ -21,8 +21,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 - **TASK-08** Dixon–Coles low-score correction — sonnet
 - **TASK-09** JSON serialization — haiku
 
-**Sequential core-model chain after TASK-05 merges:**
-- TASK-06 (trend + recency) → owns `models/bespoke.py`; opus; never parallelize with 05
+**Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → **06 (next)** → 13. Never parallelize.
 
 ## Board
 
@@ -32,7 +31,7 @@ The following are unblocked but still `backlog` — refine before executing. All
 | 02 | MHR replica benchmark | **done** | sonnet | models/mhr_replica.py | yes | — |
 | 03 | Ridge Massey benchmark | **done** | sonnet | models/ridge_massey.py | yes | — |
 | 04 | Generator multi-week trajectories | **done** | sonnet | generator/* | yes | — |
-| 05 | Tiers + frozen window (I13) | **in-review** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
+| 05 | Tiers + frozen window (I13) | **done** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
 | 06 | Trend + recency weighting (I11) | backlog | opus | models/bespoke.py | **no (core)** | 01 |
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | backlog | sonnet | harness/* | yes | 01,02 |
 | 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
