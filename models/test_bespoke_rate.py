@@ -193,3 +193,43 @@ def test_I13_consistency_low_for_volatile_opponent():
     for w, tier in enumerate(seq, start=1):
         window.add_week(w, {"BLIP": tier})
     assert window.consistency("BLIP") < 0.5
+
+
+# --- recency makes a one-week blip a transient, not a permanent tier step (memo §2; TASK-06) ---
+#
+# The same strata as _i13_world, but BLIP keeps playing its normal (field-level) schedule for the
+# whole season and blips for exactly one week. Because the per-week solve now aggregates with recency
+# weighting AND keeps accumulating BLIP's later ordinary results, BLIP's inflated blip-week games no
+# longer hold its cumulative rating up: its finalized tier spikes during the blip and then settles
+# back to its pre-blip baseline. This is the behaviour the TASK-05 hand-off flagged recency would
+# unlock — the per-week tier reads a blip as a transient, not a permanent step.
+
+
+def _blip_decay_world(weeks: int, blip_week: int) -> list[GameRow]:
+    """A full-season strata world (E1/E2 elite, M1/M2 mid, BLIP + F1/F2 field) where BLIP plays its
+    normal field schedule every week and demolishes the elites/mids in exactly `blip_week`."""
+    games: list[GameRow] = []
+    for w in range(1, weeks + 1):
+        games += [_g("E1", "F1", 8, 0, w), _g("E2", "F2", 8, 0, w),
+                  _g("E1", "M1", 5, 0, w), _g("E2", "M2", 5, 0, w)]
+        games += [_g("M1", "F1", 5, 0, w), _g("M2", "F2", 5, 0, w),
+                  _g("M1", "F2", 5, 0, w), _g("M2", "F1", 5, 0, w)]
+        if w == blip_week:  # the one-week blip: BLIP crushes the elites and mids
+            games += [_g("BLIP", "E1", 10, 0, w), _g("BLIP", "E2", 10, 0, w),
+                      _g("BLIP", "M1", 10, 0, w), _g("BLIP", "M2", 10, 0, w)]
+        else:  # normal week: BLIP is the field, losing to mids and elites
+            games += [_g("E1", "BLIP", 8, 0, w), _g("E2", "BLIP", 8, 0, w),
+                      _g("M1", "BLIP", 6, 0, w), _g("M2", "BLIP", 6, 0, w)]
+    return games
+
+
+def test_blip_decays_in_per_week_tier_with_recency():
+    """A one-week blip in an opponent that keeps playing is a transient: BLIP's finalized tier spikes
+    in the blip week then returns to its pre-blip baseline as later ordinary games accumulate. The
+    post-blip tier ends closer to the baseline than to the blip-week tier — not a permanent step."""
+    seq = _blip_tier_sequence(_blip_decay_world(weeks=9, blip_week=4))  # shipped recency default (0.2)
+    baseline = seq[2]          # week 3: BLIP's settled pre-blip tier (the field)
+    blip_tier = seq[3]         # week 4: the blip week — its finalized tier spikes (lower number)
+    post_blip = seq[-1]        # the final week: well after the blip
+    assert blip_tier < baseline                                   # the blip really moved the tier up
+    assert abs(post_blip - baseline) < abs(blip_tier - baseline)  # it decayed back toward baseline

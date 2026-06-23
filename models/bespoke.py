@@ -12,6 +12,7 @@ Per-game credit is an additive decomposition so the fairness floor is structural
   same opponent, so it never threatens I1, yet still rewards playing up / debits playing down (I6/I10).
 """
 
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -26,6 +27,11 @@ class CreditBreakdown:
     base: float
     margin_adj: float
     schedule_term: float
+    # The game's recency weight w_g = exp(-rho*(now - week_g)) ∈ (0, 1] (memo §2, §7-§8). It scales
+    # the *whole* credit inside the per-game weighted mean — it is NOT part of `total` (which is the
+    # raw per-game credit). Defaults to 1.0 so the flat (rho=0) path and every existing construction
+    # site are unchanged.
+    w: float = 1.0
 
     @property
     def total(self) -> float:
@@ -183,11 +189,11 @@ def _teams_of(games: Iterable[GameRow]) -> list[str]:
     return sorted(seen)  # deterministic team order (I8)
 
 
-# A per-team perspective entry: (base, raw_margin, opponent_id, result). Both base and the *raw*
-# (un-modulated) margin are kept separate so the same entries drive the solve and the attribution
-# (I12) without recomputing the floor; `result` lets a tier-aware caller scale the margin by the
-# opponent's frozen tier without re-deriving W/L/T.
-_Entry = tuple[float, float, str, str]
+# A per-team perspective entry: (base, raw_margin, opponent_id, result, week). Both base and the
+# *raw* (un-modulated) margin are kept separate so the same entries drive the solve and the
+# attribution (I12) without recomputing the floor; `result` lets a tier-aware caller scale the margin
+# by the opponent's frozen tier without re-deriving W/L/T; `week` drives the recency weight (memo §2).
+_Entry = tuple[float, float, str, str, int]
 # Maps (raw_margin, result, opponent_id) -> the effective margin to use this solve. `rate` passes
 # the identity (no tiers); `rate_weekly` passes one that applies the frozen-tier modulator.
 _MarginFn = Callable[[float, str, str], float]
@@ -199,13 +205,26 @@ def _build_entries(games: list[GameRow], params: BespokeParams) -> tuple[list[st
     entries: dict[str, list[_Entry]] = {t: [] for t in teams}
     for g in games:
         b, m = base_and_margin(g.goals_team, g.goals_opponent, params)
-        entries[g.team].append((b, m, g.opponent, classify(g.goals_team, g.goals_opponent)))
+        entries[g.team].append((b, m, g.opponent, classify(g.goals_team, g.goals_opponent), g.week))
         b, m = base_and_margin(g.goals_opponent, g.goals_team, params)
-        entries[g.opponent].append((b, m, g.team, classify(g.goals_opponent, g.goals_team)))
-    # Canonical summation order so the result is byte-identical regardless of input order (I8).
+        entries[g.opponent].append((b, m, g.team, classify(g.goals_opponent, g.goals_team), g.week))
+    # Canonical summation order so the result is byte-identical regardless of input order (I8);
+    # week is part of the key so two games vs the same opponent never sort ambiguously.
     for t in teams:
-        entries[t].sort(key=lambda e: (e[2], e[0], e[1]))
+        entries[t].sort(key=lambda e: (e[2], e[0], e[1], e[4]))
     return teams, entries
+
+
+def _now_of(entries: dict[str, list[_Entry]]) -> int:
+    """The latest week present in a solve's entry set — the reference point for recency decay
+    (memo §2): w_g = exp(-rho*(now - week_g)). 0 when there are no games."""
+    weeks = [e[4] for ent in entries.values() for e in ent]
+    return max(weeks) if weeks else 0
+
+
+def _recency_weight(week: int, now: int, rho: float) -> float:
+    """w_g = exp(-rho*(now - week)) ∈ (0, 1]. A pure function of week (I8: no RNG). rho=0 ⇒ 1.0."""
+    return math.exp(-rho * (now - week))
 
 
 def _solve(
@@ -214,20 +233,23 @@ def _solve(
     params: BespokeParams,
     margin_fn: _MarginFn,
     *,
+    rho: float,
     lam: float,
     tol: float,
     max_iter: int,
     init: Mapping[str, float] | None,
 ) -> dict[str, float]:
-    """Damped batch fixed-point iteration:
+    """Damped batch fixed-point iteration with recency-weighted aggregation (memo §2):
 
-        r_i <- (1 - lam) * mean_g[ base_g + margin_fn(...) + alpha * r_opp ]   (then re-center)
+        r_i <- (1 - lam) * [ Σ_g w_g*(base_g + margin_fn(...) + alpha*r_opp) / Σ_g w_g ]  (re-center)
 
-    Per game `base + margin_fn(...)` is constant; only the schedule term re-rates each pass. With
-    lam>0 and alpha<1 the map is a contraction -> a unique fixed point from any start (I8/I9). The
-    tier modulators inside `margin_fn` are non-negative scalars on a constant, so they never enter
-    the alpha coupling and the contraction argument (memo §3) is unchanged.
+    where w_g = exp(-rho*(now - week_g)) and now is the latest week in `entries`. Per game
+    `base + margin_fn(...)` is constant; only the schedule term re-rates each pass. The recency
+    weights are fixed non-negative per-game scalars applied inside the average, so they never enter
+    the alpha coupling: with lam>0 and alpha<1 the map is still a contraction → a unique fixed point
+    from any start (memo §3 unchanged; I8/I9). rho=0 ⇒ all w_g=1 ⇒ the plain uniform mean.
     """
+    now = _now_of(entries)
     r = {t: 0.0 for t in teams}
     if init is not None:
         r = {t: float(init.get(t, 0.0)) for t in teams}
@@ -239,9 +261,12 @@ def _solve(
                 new[t] = 0.0
                 continue
             total = 0.0
-            for base, raw_margin, opp, result in ent:
-                total += base + margin_fn(raw_margin, result, opp) + params.alpha * r[opp]
-            new[t] = (1.0 - lam) * (total / len(ent))
+            wsum = 0.0
+            for base, raw_margin, opp, result, week in ent:
+                w = _recency_weight(week, now, rho)
+                total += w * (base + margin_fn(raw_margin, result, opp) + params.alpha * r[opp])
+                wsum += w
+            new[t] = (1.0 - lam) * (total / wsum)
         mean = sum(new.values()) / len(new)
         for t in teams:
             new[t] -= mean  # re-center (gauge fix + regularization target)
@@ -259,10 +284,13 @@ def _attribute(
     params: BespokeParams,
     margin_fn: _MarginFn,
     lam: float,
+    rho: float,
 ) -> tuple[dict[str, list[CreditBreakdown]], dict[str, float], float]:
-    """Replay each team's games against the converged ratings to record the three named drivers
-    (I12), then rebuild ratings from them so `rating == (1-lam)*mean(total) - center_offset` is
-    exact, not merely within tolerance (memo §7). Uses opponents' FINAL ratings → I10."""
+    """Replay each team's games against the converged ratings to record the four named drivers
+    (base, margin_adj, schedule_term, w — I12 + memo §8), then rebuild ratings from them so
+    `rating == (1-lam)*(Σ w_g*total_g / Σ w_g) - center_offset` is exact, not merely within tolerance
+    (memo §7, weight-aware). Uses opponents' FINAL ratings → I10."""
+    now = _now_of(entries)
     attribution: dict[str, list[CreditBreakdown]] = {}
     pre: dict[str, float] = {}
     for t in teams:
@@ -272,11 +300,13 @@ def _attribute(
                 base=base,
                 margin_adj=margin_fn(raw_margin, result, opp),
                 schedule_term=params.alpha * r[opp],
+                w=_recency_weight(week, now, rho),
             )
-            for base, raw_margin, opp, result in ent
+            for base, raw_margin, opp, result, week in ent
         ]
         attribution[t] = breakdowns
-        pre[t] = (1.0 - lam) * (sum(bd.total for bd in breakdowns) / len(ent)) if ent else 0.0
+        wsum = sum(bd.w for bd in breakdowns)
+        pre[t] = (1.0 - lam) * (sum(bd.w * bd.total for bd in breakdowns) / wsum) if ent else 0.0
     center_offset = sum(pre.values()) / len(pre)
     ratings = {t: pre[t] - center_offset for t in teams}
     return attribution, ratings, center_offset
@@ -299,8 +329,10 @@ def rate(
     params = params or BespokeParams()
     teams, entries = _build_entries(list(games), params)
     identity_margin: _MarginFn = lambda raw, result, opp: raw  # noqa: E731 — no tiers in flat rate
-    r = _solve(teams, entries, params, identity_margin, lam=lam, tol=tol, max_iter=max_iter, init=init)
-    attribution, ratings, center_offset = _attribute(teams, entries, r, params, identity_margin, lam)
+    # rho=0 ⇒ every recency weight is exactly 1.0, so the weighted mean collapses to the uniform mean
+    # and this flat baseline is byte-identical to its pre-recency behaviour (I8/I9 tests stay green).
+    r = _solve(teams, entries, params, identity_margin, rho=0.0, lam=lam, tol=tol, max_iter=max_iter, init=init)
+    attribution, ratings, center_offset = _attribute(teams, entries, r, params, identity_margin, lam, rho=0.0)
     return RateResult(
         ratings=ratings,
         tiers={},
@@ -308,6 +340,23 @@ def rate(
         trend={},
         center_offset=center_offset,
     )
+
+
+def _ols_slope(points: list[tuple[int, float]]) -> float:
+    """Ordinary-least-squares slope of y over x for a fixed (week, rating) series — the trend signal
+    (memo §6). Closed form, no RNG (I8). Chosen over a two-point `r_recent - r_baseline` because it
+    uses the whole window and so is less jumpy; both are sanctioned by §6. A series with < 2 points or
+    zero week-variance (a single recorded week) has no defined slope → 0.0, by convention."""
+    n = len(points)
+    if n < 2:
+        return 0.0
+    mean_x = sum(x for x, _ in points) / n
+    mean_y = sum(y for _, y in points) / n
+    sxx = sum((x - mean_x) ** 2 for x, _ in points)
+    if sxx == 0.0:
+        return 0.0
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in points)
+    return sxy / sxx
 
 
 def rate_weekly(
@@ -318,6 +367,8 @@ def rate_weekly(
     gap_c: float = 2.0,
     max_window: int = 4,
     rho_tier: float = 0.2,
+    rho: float = 0.2,
+    trend_window: int = 4,
     lam: float = 0.05,
     tol: float = 1e-12,
     max_iter: int = 1000,
@@ -336,8 +387,23 @@ def rate_weekly(
     **Cold start (memo §5):** the window only modulates once **>= 2 finalized weeks** exist, so
     weeks 1-2 run tier-agnostic (a single provisional pass); the frozen window activates from week 3.
     A one-week tier blip in an opponent is averaged across the window, so the credit it confers this
-    week moves only a bounded, damped amount → I13. The final week's solve produces the returned
-    ratings/tiers/attribution; `trend` stays empty (TASK-06).
+    week moves only a bounded, damped amount → I13. With recency weighting on (``rho`` > 0) an old
+    blip game is further down-weighted as weeks advance, so its inflation *decays* rather than
+    persisting as a permanent step. The final week's solve produces the returned ratings/tiers/
+    attribution.
+
+    **Trend (memo §6, I11).** Each team's converged rating is captured per finalized week; after the
+    walk ``trend[t]`` is the OLS slope of that team's rating series over the last ``trend_window``
+    weeks. A rising team shows a positive slope, a falling team a negative one, even when their
+    season-average strength is equal — and recency weighting (below) makes the point-in-time ratings
+    track current form. Trend is an *output only*; it never re-enters the solve (observed-vs-derived
+    wall, brief §5).
+
+    **`rho` (game recency, = 0.2, ~3.5-week half-life)** weights each game in the per-week aggregate
+    by ``exp(-rho*(W - week_g))`` (memo §2, §9: `ρ` half-life 3-4 weeks; `ρ = ρ_tier`). At ρ=0 the
+    solve is the uniform mean (the flat baseline). A ~1-week half-life would let the latest game swamp
+    everything and collapse the trend window into a single jump; the gentler memo decay lets a
+    trajectory register as a slope. Kept a parameter for Stage-A/B sweeps.
 
     **`rho_tier` (= 0.2, ~3.5-week half-life)** follows memo §9 (`ρ_tier = ρ`, half-life 3-4 weeks),
     NOT the task-template placeholder of 1.0. With a ~1-week half-life the most recent finalized week
@@ -355,6 +421,9 @@ def rate_weekly(
     ratings: dict[str, float] = {}
     tiers: dict[str, int] = {}
     center_offset = 0.0
+    # Per-team rating series across finalized weeks → the trend signal (memo §6). Keyed by team; each
+    # value is the (week, converged rating) points, in week order (I8: a fixed, deterministic series).
+    rating_series: dict[str, list[tuple[int, float]]] = {}
 
     # Count weeks *finalized so far*, not weeks the window retains: with a short window (e.g.
     # max_window=1) the window holds one week yet history may still be long enough to activate.
@@ -369,16 +438,21 @@ def rate_weekly(
         def margin_fn(raw: float, result: str, opp: str, _frozen: dict = frozen) -> float:
             return scaled_margin(raw, result, _frozen.get(opp), params)
 
-        r = _solve(teams_w, entries_w, params, margin_fn, lam=lam, tol=tol, max_iter=max_iter, init=None)
-        attribution, ratings, center_offset = _attribute(teams_w, entries_w, r, params, margin_fn, lam)
+        r = _solve(teams_w, entries_w, params, margin_fn, rho=rho, lam=lam, tol=tol, max_iter=max_iter, init=None)
+        attribution, ratings, center_offset = _attribute(teams_w, entries_w, r, params, margin_fn, lam, rho=rho)
         tiers = detect_tiers(ratings, tier_count=tier_count, gap_c=gap_c)
         window.add_week(w, tiers)
+        for t, rt in ratings.items():
+            rating_series.setdefault(t, []).append((w, rt))
         n_finalized += 1
+
+    # Trend = OLS slope of each team's rating over the last `trend_window` finalized weeks (memo §6).
+    trend = {t: _ols_slope(series[-trend_window:]) for t, series in rating_series.items()}
 
     return RateResult(
         ratings=ratings,
         tiers=tiers,
         per_game_attribution=attribution,
-        trend={},
+        trend=trend,
         center_offset=center_offset,
     )
