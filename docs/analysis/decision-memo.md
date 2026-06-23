@@ -100,10 +100,10 @@ centered: elite team `R_elite=+4`, field team `R_field=−2`.
 | 1-goal **win over field** | `W=3` | `0` (close) | `0.5·(−2) = −1.0` | **+2.0**… |
 
 At `α=0.5` the canonical +4/−2 gap (6) is exactly a tie (`α·gap = 3 = W−L`), so I6 is not yet strict.
-**α is pinned just above the bound — the shipped default is `α=0.6`** (loss→+2.4, win→3−1.2=+1.8). **I6
-satisfied.** (Caveat — this is a *credit-level* guarantee on `per_game_credit`; whether the solver's
-*converged* ratings actually reach a gap of 6 is topology-dependent and is validated end-to-end by
-Scenario 7 / TASK-11. See Q1.)
+This *credit-level* worked example clears at any `α>0.5`. But whether the solver's *converged* ratings
+actually reach a gap of 6 is topology-dependent: on the Scenario-7 league the centered spread reaches
+only `≈4.38`, so end-to-end I6 needs `α ≳ 0.69` — which is why the **shipped default is `α=0.75`**
+(TASK-13, validated end-to-end by Scenario 7). See §9 and Q1 for the full derivation.
 
 Now check **I1 is untouched**: against *that same elite team*, compare a win vs a loss. Both share the
 **same** `scheduleTerm` (`0.6·4 = +2.4`) and same close-`marginAdj` (0). Only `base` differs:
@@ -225,19 +225,25 @@ The MHR replica, ridge Massey, and bespoke all conform so the harness swaps them
 
 ---
 
-## 9. Strawman defaults (starting point — Stage A will tune)
+## 9. Defaults (Stage-A-tuned — TASK-13)
+
+The shipped defaults below. Only `α` moved in Stage A (0.6 → 0.75); the floor (`W/T/L`, the
+bonus/penalty buckets) and the tier table are the original strawman, kept structural — they are
+what make I1–I5/I7 hold by construction, so they are not a tuning surface. The `α`/`ρ` picks are
+the argmax of the deterministic `harness/tune.py` rank-recovery sweep within the invariant-safe
+region; see §11 Q1 for the α derivation.
 
 | Param | Default | Notes |
 |---|---|---|
-| `W / T / L` | `3 / 1 / 0` | result floor; ordering enforced here |
-| `bonus[3/4/5+]` | `0.6 / 0.9 / 1.0` | diminishing: `Δ=0.6,0.3,0.1`; close=0 |
-| `pen[3/4/5+]` | `0.5 / 0.8 / 1.0` | close=0; increasing |
-| `α` (schedule) | `0.6` | pinned just above the I6 credit-level bound (0.5 ties the +4/−2 example); sweep `0.3–0.8` in Stage A |
-| `m(tier)/p(tier)` | per-tier-gap scalars | modulate adjustment only |
-| `ρ` (game recency) | exp decay, ~½-life 3–4 wks | recent heavier |
-| `λ` (regularization) | `0.05` | unique fixed point |
+| `W / T / L` | `3 / 1 / 0` | result floor; ordering enforced here (structural — untuned) |
+| `bonus[3/4/5+]` | `0.6 / 0.9 / 1.0` | diminishing: `Δ=0.6,0.3,0.1`; close=0 (structural — untuned) |
+| `pen[3/4/5+]` | `0.5 / 0.8 / 1.0` | close=0; increasing (structural — untuned) |
+| `α` (schedule) | `0.75` | **tuned (was 0.6).** Re-derived against the *reachable* converged spread (≈4.38) so end-to-end I6 holds (threshold ≈0.69), and the sweep argmax for rank recovery; `<1` keeps the I9 contraction (`α(1−λ)=0.71`). See §11 Q1. |
+| `m(tier)/p(tier)` | per-tier-gap scalars | modulate adjustment only (memo table unchanged; tier-strength sweep at ×2 did not help — orthogonal to α, Q3) |
+| `ρ` (game recency) | `0.2` (exp decay, ~½-life 3–4 wks) | recent heavier; sweep pick, kept off 0 so I11 trend survives |
+| `λ` (regularization) | `0.05` | unique fixed point (sets uniqueness not accuracy — untuned) |
 | `freezeWindowWeeks` | `4` | ≤4; swept in Stage B |
-| `ρ_tier` | `= ρ` | independently tunable |
+| `ρ_tier` | `0.2` (`= ρ`) | follows `ρ` (memo §5) |
 
 ---
 
@@ -274,7 +280,7 @@ not the pick, has the final word.
 
 | # | Decision | Rationale (criterion) | Confirming test → *falsified if* |
 |---|---|---|---|
-| **Q1 `α`** | **Derived, not guessed. Pinned `0.6` (TASK-01); sweep `0.3–0.8` in Stage A.** α is pinned by I6: `α > (W−L)/(elite−field gap) = 3/6 = 0.5` at the canonical credit-level gap, so `0.5` ties and `0.6` clears with margin; must stay `<1` for the contraction (I9, `α(1−λ)=0.57`). **Open caveat (invariant-auditor, TASK-01):** the I6 *credit-level* test holds at α=0.6, but the solver's *converged* spread is compressed by centering — an "elite" team that merely beat an average field reaches only `α·gap ≈ 2.8 < 3`, so end-to-end I6 inverts there; it holds only where the elite team beat a genuinely strong slate (gap ≈ 6, the Scenario-7 construction). **TASK-11 must validate end-to-end and re-derive α against the *reachable* gap** (or qualify I6's claim), not the hand-picked one. | Structural invariant safety (1) sets the floor; rank-recovery (2) picks within range. | Scenarios 7 (I6), 3, 4 (I10) + convergence sweep. *Falsified if* no α clears I6 end-to-end without breaking convergence or recovery. |
+| **Q1 `α`** | **RESOLVED (TASK-13): derived `α = 0.75`.** Re-derived against the solver's *reachable* converged spread, not the hand-picked +4/−2 example. On the Scenario-7 league the centered spread converges to `R_TOP − R_BOTTOM ≈ 4.38`, so end-to-end I6 (`α·gap > W−L = 3`) needs `α ≳ 0.69` — the old `0.6` (calibrated to the credit-level gap of 6) sits *below* it and inverts I6 end-to-end. `α = 0.75` clears it with margin (`credit(loss→elite) 1.67 > credit(win→weak) 1.42` on converged ratings) **and** is the argmax of the Stage-A rank-recovery sweep (`harness/tune.py`) over the scorable §7 scenarios; stays `<1` for the I9 contraction (`α(1−λ)=0.71`). *Falsifiable assumption held:* an α clears I6 end-to-end without breaking convergence or recovery. **Confirming test green:** `scenarios/test_s07_close_vs_tier.py` (end-to-end I6 at the shipped default) + `models/test_bespoke_tuning.py`. | Structural invariant safety (1) sets the floor; rank-recovery (2) picks within range. | Scenarios 7 (I6), 3, 4 (I10) + convergence sweep. *Falsified if* no α clears I6 end-to-end without breaking convergence or recovery — **not falsified.** |
 | **Q2 `T`** | **`T = 1` (the 3/1/0 scale).** Tie sits ⅓ toward a win — well below midpoint = "tying is not winning, no big bump" (rule 2); most legible value. | Explainability (3); recovery expected insensitive (2). | Scenario 8 (I5) + sensitivity `T∈{0.5,1,1.5}`. *Falsified if* recovery moves materially with T → data decides. |
 | **Q3 tier mod** | **Discrete (margin-bucket × tier) lookup table.** Stability comes from the §5 frozen recency-weighted window (that's what I13 is for), **not** from smoothing — smoothing by rating-gap would double-count `scheduleTerm`. Keep the two opponent channels orthogonal: `scheduleTerm`=strength-of-schedule, tier-table=how margin reads by tier. | Faithful to brief's 2-D surface + explainability (3); robustness via window (4). | Scenario 13 (no whipsaw once windowed) + **ablation**: each channel adds recovery, contributions not redundant (corr < ~0.7). *Falsified if* redundant → collapse to one channel. |
 | **Q4 weak-team win** | **Real but *bounded* debit, in the `scheduleTerm` channel only.** Rule 6 ("negative signal") ⇒ genuine debit, not withheld credit. Safe: debit lives in schedule, never in `base`/`marginAdj`, and the floor (I7) is about margin + schedule-matched comparisons, so I1/I4/I5/I7 hold structurally. Cap magnitude both directions ("cap the benefit"). | Invariant safety (1) via channel isolation; brief intent. | Scenarios 3, 6 + constructed schedule-matched I7 case. *Falsified if* the debit ever flips a schedule-matched result order. |
