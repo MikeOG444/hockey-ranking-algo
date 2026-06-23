@@ -14,7 +14,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 **Needs `/task-new` to refine before executing (all parallel-safe with each other):**
 
 - **TASK-10** truth-scoring metrics — sonnet — critical path (blocks 12)
-- **TASK-08** Dixon–Coles low-score correction — sonnet
+- ~~**TASK-08** Dixon–Coles low-score correction — sonnet~~ (in-progress)
 - **TASK-09** JSON serialization — haiku
 
 **Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → **13 (next)**. 13 is blocked on 11 + 12; never parallelize the chain.
@@ -30,7 +30,7 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 | 05 | Tiers + frozen window (I13) | **done** | opus | models/bespoke.py, models/tiers.py | **no (core)** | 01 |
 | 06 | Trend + recency weighting (I11) | **done** | opus | models/bespoke.py, models/test_bespoke_rate.py, models/test_bespoke_trend.py | **no (core)** | 01,05 |
 | 07 | Model-agnostic invariant harness (I1–I13 runner) | **done** | sonnet | harness/* | yes | 01,02 |
-| 08 | Dixon–Coles low-score correction | backlog | sonnet | generator/world.py | no (vs 04) | 04 |
+| 08 | Dixon–Coles low-score correction | **in-progress** | sonnet | generator/world.py | no (vs 04) | 04 |
 | 09 | §8 JSON serialization (dataset ↔ json) | backlog | haiku | generator/io.py | yes | — |
 | 10 | Truth-scoring metrics (Spearman/RMSE/tier acc) | backlog | sonnet | harness/metrics.py | yes | — |
 | 11 | Scenario suite §7 | **done** | sonnet | scenarios/* | yes (per scenario) | 04 |
