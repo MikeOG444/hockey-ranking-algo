@@ -906,3 +906,76 @@ def build_s14_closing_schedule(seed: int = 42) -> tuple[Dataset, dict]:
         "weak_ids": weak_ids,
         "invariants": [],  # additive confirming scenario (TASK-17); not a numbered invariant
     }
+
+
+# ---------------------------------------------------------------------------
+# Scenario 15 — Opponent-relative goal-profile residual (TASK-18)
+# ---------------------------------------------------------------------------
+
+def build_s15_goal_profile(seed: int = 42) -> tuple[Dataset, dict]:
+    """OVER over-performs each opponent's goal baseline; UNDER under-performs — same buckets.
+
+    The deterministic confirming scenario for the goal-profile residual
+    (`docs/analysis/goal-profile-residual.md`). Two subjects, OVER and UNDER, play the **same
+    opponents** with results in the **same margin buckets** (every game a "close" win), so the
+    TASK-17 model — which reads only `base`, the margin *bucket*, and who you played — rates them
+    **byte-identically equal**. The only difference is the *exact goals*, which the new
+    opponent-relative residual reads:
+
+    - **P_OFF** (an offense test): OVER beats it **3-1**, UNDER **2-1** — same concession, but OVER
+      scores **above** P_OFF's typical goals-allowed while UNDER does not (offensive residual).
+    - **P_DEF** (a defense test): OVER beats it **2-0**, UNDER **2-1** — same goals-for, but OVER
+      holds P_DEF **below** its typical goals-for while UNDER concedes more (defensive residual).
+
+    Both subjects' games are 1- or 2-goal wins ("close" bucket → `win_bonus["close"] = 0`), against
+    the same two opponents, in the same week — so their `_build_entries` rows are identical and the
+    TASK-17 model returns ``r[OVER] == r[UNDER]`` exactly. The residual breaks the tie: OVER beats
+    each opponent's own GF/GA baseline by more than UNDER, so OVER must rank strictly above.
+
+    The opponents' baselines are set by filler games (F1/F2): P_OFF typically allows ~2.25 / scores
+    ~1.5; P_DEF typically scores ~1.5 / allows ~1.75 (means over all of that opponent's games,
+    computed from the Level-0 log — the sanctioned aggregate, never a rating fed back in).
+
+    Planted truth: OVER is the genuinely stronger team (it dominates opponents' baselines), so the
+    model **must** rank OVER >= UNDER. Exact GameRows throughout (as in S06/S12/S14) so the goal
+    profiles are controlled, not Poisson-dependent; `seed` is accepted for signature parity but the
+    dataset is fully deterministic without it (I8).
+    """
+    ground_truth = [
+        TeamParams(id="OVER",  attack=0.4, defense=-0.4),   # genuinely strong: beats baselines
+        TeamParams(id="UNDER", attack=0.1, defense=-0.1),   # weaker: meets/undershoots baselines
+        TeamParams(id="P_OFF", attack=-0.1, defense=0.2),   # the offense-test opponent
+        TeamParams(id="P_DEF", attack=-0.1, defense=0.2),   # the defense-test opponent
+        TeamParams(id="F1",    attack=0.0, defense=0.0),
+        TeamParams(id="F2",    attack=0.0, defense=0.0),
+    ]
+
+    games: list[GameRow] = []
+
+    def _g(week: int, team: str, opp: str, gf: int, ga: int) -> None:
+        date = f"2025-W{week:02d}"
+        games.append(GameRow(week=week, date=date, time="10:45",
+                             team=team, opponent=opp, goals_team=gf, goals_opponent=ga))
+        games.append(GameRow(week=week, date=date, time="10:45",
+                             team=opp, opponent=team, goals_team=ga, goals_opponent=gf))
+
+    # Week 1 — the two subjects' games. Same opponents, same result (W), same "close" bucket,
+    # so TASK-17 sees identical rows; only the exact goals (the residual) differ.
+    _g(1, "OVER",  "P_OFF", 3, 1)   # scores 3 (above P_OFF's ~2.25 allowed) — offensive over-perform
+    _g(1, "UNDER", "P_OFF", 2, 1)   # scores 2 (below baseline), same concession
+    _g(1, "OVER",  "P_DEF", 2, 0)   # holds P_DEF to 0 (below its ~1.5 scored) — defensive over-perform
+    _g(1, "UNDER", "P_DEF", 2, 1)   # concedes 1, same goals-for
+
+    # Week 2 — filler games that set the opponents' GF/GA baselines (and anchor the league).
+    _g(2, "F1", "P_OFF", 2, 2)
+    _g(2, "F2", "P_OFF", 2, 2)
+    _g(2, "P_DEF", "F1", 2, 2)
+    _g(2, "P_DEF", "F2", 3, 1)
+    _g(2, "F1", "F2", 1, 1)
+
+    dataset = Dataset(games=games, ground_truth=ground_truth)
+    return dataset, {
+        "over_at_least_under": ("OVER", "UNDER"),
+        "profile_opponents": ("P_OFF", "P_DEF"),
+        "invariants": [],  # additive confirming scenario (TASK-18); not a numbered invariant
+    }
