@@ -1,9 +1,10 @@
 # TASK-17: Resolve the closing-schedule floor cost (opponent-aware recency + floor/schedule)
 
-**State:** refined (blocked on a decision + 15/16) · **Model:** **opus** — this is **model-core**
-(`models/bespoke.py`): it changes how per-game credit and/or recency weighting compose, and it directly
-touches the I1/I6/I9/I11 machinery. Highest-stakes change since Stage A; opus, sequential, full invariant
-gate.
+**State:** ready — **decision gate resolved 2026-06-24: ship (A), Approach 2 (surprise-centered credit).**
+See "Design decision" below. · **Model:** **opus** — this is **model-core** (`models/bespoke.py`): it
+**recenters** how per-game credit is computed (from absolute `base(result)` to `own_rating + surprise`) and
+directly touches the I1/I6/I9/I11 machinery. Highest-stakes change since Stage A; opus, sequential, full
+invariant gate.
 **Owns (files):** `models/bespoke.py` and its tests (`models/test_bespoke_*.py`); a **new confirming
 scenario** in `scenarios/` (builder + test) for the closing-schedule disparity pattern; regenerates
 `reports/comparison.md` and `reports/real-h2h.md` / `reports/real-ranking.md` if those exist.
@@ -32,25 +33,57 @@ loss (≈ α × top_rating ≈ 2.11) is below the 3.0 win floor** — a soft win
 and recency (I11) amplifies the disparity because both teams' lopsided games are late-season. This is the
 synthetic **S05 giant-killer cost** (comparison §4 Cause 2) appearing on real data and compounded by recency.
 
-## The user's direction + the known wrinkle
+## Decision gate — RESOLVED 2026-06-24
 
-The owner's call: **make the recency-weighted rating opponent-aware** so a team that loses to elites late
-isn't out-ranked by a team padding weak wins late. **Critical constraint proven in the analysis doc:**
-re-weighting **alone cannot** reorder Woodbridge/Mid-Fairfield, because *every* MF late game (a loss, credit
-~1.3–2.1) scores below *every* Woodbridge late game (a win, credit ~2.8–3.3) — when all of A's credits sit
-below all of B's, no weighting reorders them. So the fix must **also** let an honorable loss out-credit a
-cheap win (an opponent-strength term that can clear the floor for extreme opponents) **while preserving the
-I9 contraction and same-opponent I1.** Opponent-aware recency + a floor-clearing schedule term, together.
+**Outcome: (A) ship, via Approach 2 (surprise-centered credit).** The owner reframed the fairness principle
+in chat, which changed the *mechanism* (not just the justification). Both the reframe and the rejected
+alternative are recorded below so a later reader understands **why the scope grew past the task's original
+"add a bounded floor-clearing term" framing.**
 
-## Decision gate (resolve BEFORE coding)
+## Design decision: reframe the floor, recenter credit on `own_rating + surprise`
 
-This is not a free win — it deliberately weakens the "a win is always worth more than a loss" simplicity that
-the I1 floor gave us. Confirm with the owner which target:
-- **(A) Ship the fix** — accept added complexity for real-world accuracy on closing-schedule disparity.
-- **(B) Document-and-accept** — leave the model; record the cost as a known fairness tradeoff (then this task
-  becomes a docs-only note, not a model change).
-Default assumption pending confirmation: **(A)**, per the owner's stated direction. If (B), stop and
-down-scope.
+**The reframe (owner's call).** The old fairness floor — *"a win must always count"* (a flat `base(win)=3.0`)
+— is the wrong principle. Beating an opponent you beat 99.99% of the time demonstrates **no strength**, yet
+the flat floor pays it full freight, which is exactly what inflates Woodbridge. The real fairness need a
+parent has is narrower: **"a win is not a loss"** — you should never be *hurt for winning*. That fear is real
+because MHR **caps goal differential**, so in a blowout mismatch you cannot "prove" dominance by margin; an
+opponent-strength penalty could then net-*lower* a winner for a game they were scheduled into. The floor's
+only job is to prevent that. So:
+
+> **Credit tracks _surprise_.** An *expected* result moves you ~nothing; a *surprising* result moves you a
+> lot. The floor is asymmetric on purpose: surprise can only ever *help* a winner, never hurt them — while
+> ties and losses carry their full downside.
+
+**Behavior the owner specified:**
+- **Win** → never lowers your rating (at worst *neutral*); the gain *above* neutral scales with how strong
+  the opponent was. Beat a cinch ≈ neutral; beat a peer-or-better → real gain.
+- **Loss to a much *stronger* team** → neutral-ish, can *modestly raise* you (expected loss / near-upset).
+- **Loss to a much *weaker* team** → absolutely lowers you (an upset against you).
+- **Tie to a weaker team** → bad, should lower you.
+- **Closeness buckets `1 | 2 | 3 | 4+`** scale the magnitude; **4+ is not a close game** (no honor credit).
+
+**The mechanism (Approach 2 — recenter credit).** Per-game credit becomes `own_rating + f(result, opp − own)`
+with the win-surprise term **clamped ≥ 0** (the win-only floor). This is the *only* design that delivers the
+behavior above; see "Why not the minimal version" for the arithmetic proof that the task's original framing
+cannot.
+
+**Why not the minimal version (the task's original "floor-clearing term").** Keeping `base + margin + α·opp`
+and merely *adding* a term (or a `max(own_rating, …)` floor) lifts an elite loss but **cannot make a cheap
+win neutral** — a `max` only floors *up*, and an added term only raises the loss. The cheap win keeps banking
+~3.3: Woodbridge beats a +0.42 team → `3.0 + 0.75·0.42 = 3.31`, while Mid-Fairfield loses to #1 → `0 +
+0.75·2.81 = 2.11`, so **3.31 > 2.11 and the inversion never happens** — Woodbridge still inflates on the
+*volume* of soft wins. To invert it that way you'd have to make a loss worth *more than a clean win* in
+absolute terms (3.3+), which is the ugly form of weakening "a win beats a loss." Recentering on `own_rating`
+makes the soft win ≈ Woodbridge's own rating (holds station, no inflation) and the elite loss ≈
+Mid-Fairfield's own rating (slightly up) — **the inversion comes from *both* sides**, and same-opponent I1
+(win > tie > loss vs the *same* team) is untouched.
+
+**The convergence obligation (the central math check).** Recentering replaces today's affine `α<1`
+contraction with an **Elo/Massey-style equilibrium**: the damped Jacobi update reduces to
+`r ← r + λ·mean_g f(opp_g − r)`, whose fixed point is "mean surprise = 0." It converges when `f` has bounded
+slope and `λ` is small enough — well-trodden, but a genuine **re-derivation** that the PR must prove (mirror
+memo §0.2). Determinism (I8/I9) is preserved by a Jacobi sweep (every RHS evaluated at iterate *k*); the
+win-clamp is `max(0, ·)` on the surprise term, not on `own_rating`, so it adds no order-dependence.
 
 ## Two things settled
 
@@ -93,15 +126,17 @@ down-scope.
 1. **Write S14** (`scenarios/builders.py` `build_s14_closing_schedule` + `scenarios/test_s14_closing_schedule.py`)
    planting HONEST (late elite losses) vs PADDER (late soft wins), HONEST truly stronger. Assert the model
    ranks HONEST ≥ PADDER. **Watch it fail on today's model** (it will — that is the bug).
-2. **Design the mechanism** (memo-style note in the PR, then code):
-   - **Opponent-aware recency:** recency weight modulated by opponent strength so soft recent wins carry
-     less than games vs strong opponents. Keep it orthogonal to the tier table (no double-count).
-   - **Floor-clearing opponent term:** let the opponent-strength contribution grow (bounded, e.g. convex in
-     `opp_rating` or a separate term) so a close loss to an elite can exceed a soft win — **re-derive the
-     I9 contraction** for the new operator and prove it still converges (the single most important math
-     check; mirror memo §0.2).
-   - Preserve same-opponent I1 (the new term must be result-independent or floored so a win still ≥ a loss
-     vs the *same* opponent).
+2. **Implement the surprise-centered credit** (memo-style note in the PR, then code) — per the resolved
+   Design decision above:
+   - **Recenter:** per-game credit = `own_rating + f(result, opp − own)`, with the **win-surprise clamped
+     ≥ 0** (win-only floor — a win never lowers you). Beating a cinch ≈ neutral; ties/losses carry full
+     downside (tie-to-weak and loss-to-weak lower you; loss-to-strong neutral-or-slightly-up).
+   - **Closeness buckets `1 | 2 | 3 | 4+`** scale `f`'s magnitude; **4+ = no honor credit** on a loss.
+   - **Re-derive convergence:** the affine `α<1` contraction is replaced by the Elo/Massey-style equilibrium
+     `r ← r + λ·mean_g f(opp_g − r)` — **prove it converges** (bounded-slope `f`, small `λ`; the single most
+     important math check; mirror memo §0.2). Determinism via a Jacobi sweep (all RHS at iterate *k*).
+   - Preserve same-opponent **I1**: vs one opponent, `f` must order win > tie > loss, so a win still ≥ a
+     loss vs the *same* team. The clamp is on the win-surprise, not on `own_rating`.
 3. **Implement to green on S14.**
 4. **Run the full gate:** `pytest -q` (all I1–I13 + every §7 scenario), regenerate `reports/comparison.md`
    via `python -m harness.run` (rank recovery must **not regress** — report the before/after honestly), and
@@ -114,12 +149,12 @@ down-scope.
 
 ## Acceptance / Definition of done
 
-- [ ] Owner confirmed target (A) ship — or this is down-scoped to (B) docs-only.
+- [x] Owner confirmed target **(A) ship, Approach 2 (surprise-centered credit)** — resolved 2026-06-24.
 - [ ] New scenario **S14** plants closing-schedule disparity; its test fails on the old model and passes on
       the new one (HONEST ≥ PADDER), with planted truth.
-- [ ] `models/bespoke.py` change implements opponent-aware recency **and** a floor-clearing opponent term;
-      the I9 contraction is **re-derived and proven** for the new operator (note in PR); same-opponent I1
-      preserved.
+- [ ] `models/bespoke.py` **recenters** per-game credit to `own_rating + f(result, opp − own)` with the
+      win-surprise clamped ≥ 0 and closeness buckets `1|2|3|4+`; the **Elo/Massey-style convergence is
+      re-derived and proven** for the new update (note in PR); same-opponent I1 preserved.
 - [ ] **All I1–I13 still green**; **Stage-A rank recovery does not regress** (`reports/comparison.md`
       regenerated; before/after reported honestly — if any scenario moves, explain why).
 - [ ] Real-data confirmation: `analysis.head_to_head` shows **Woodbridge below Mid-Fairfield Elite**; the
@@ -133,10 +168,17 @@ down-scope.
 
 ## Out of scope
 
+- **Opponent-relative goal-profile residual → fast-follow task.** The owner also wants honor credit shaped by
+  *over/under-performance vs the opponent's own goal baseline*: scoring **above their typical goals-allowed**
+  and **holding them below their typical goals-for** (aggregates computed from the Level-0 log — legitimate,
+  on the right side of the observed-vs-derived wall). This is deliberately **deferred** so it doesn't ride on
+  the floor rewrite: it adds a *third* opponent channel that needs its own **orthogonality proof** (don't pay
+  for opponent strength twice — CLAUDE.md), its own determinism check, and its own confirming scenario. The
+  Woodbridge inversion is achievable from **recenter + closeness** alone, so this task ships that first.
 - **Walk-forward prediction / log-loss (B4)** — the eventual adjudicator of whether this change predicts
   better; a separate task. This task fixes the *ranking inversion* against planted truth + head-to-head.
 - **Changing the generator / world model** — the new scenario uses the existing trajectory + planting
   machinery.
-- **Re-tuning unrelated params** (tier table, freeze window) — keep the change minimal and targeted; sweep
-  only what the new mechanism introduces.
+- **Re-tuning unrelated params** (tier table, freeze window) — keep the change targeted; sweep only what the
+  new surprise mechanism introduces (`λ`, `f`'s slope/closeness scaling).
 - **Touching `ingest/` or `analysis/` logic** — consume them; only regenerate their reports.

@@ -63,7 +63,8 @@ S05 gap is a deliberate cost of the fairness floor and stays).
 | 14 | Point-in-time truth for trajectory scenarios | **done** | sonnet | harness/metrics.py, harness/test_metrics.py, harness/run.py, harness/test_run.py, reports/comparison.md | no (re-scores all) | 10,11,12,13 |
 | 15 | Real MHR data loader + data-quality report | **done** | sonnet | ingest/* (new), data/real/* (new), reports/real-data-quality.md (new) | yes (additive) | — |
 | 16 | Head-to-head agreement + giant-killer case studies (real) | **done** | sonnet | analysis/* (new), reports/real-h2h.md (new) | yes (after 15) | 15 |
-| 17 | Resolve the closing-schedule floor cost (opponent-aware recency + floor/schedule) | **ready** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s14_closing_schedule.py, reports/comparison.md | no (core) | 15, 16 |
+| 17 | Resolve the closing-schedule floor cost (surprise-centered credit) | **in-progress** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s14_closing_schedule.py, reports/comparison.md | no (core) | 15, 16 |
+| 18 | Opponent-relative goal-profile residual (over/under-perform vs opponent goal baseline) | **refined** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s15_goal_profile.py | no (core) | 17 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13. Never parallelize these.
