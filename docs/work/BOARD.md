@@ -11,16 +11,20 @@ Anything owning `models/bespoke.py` is **sequential** — never run two of those
 
 ## ▶ Ready now
 
-**TASK-15** real MHR data loader + data-quality report — sonnet. Convert the external top-50 per-team JSON
-dump (USA 11U AAA 2025–26) into one §8 Level-0 dataset the existing raters can consume, plus a generated
-quality report. Core job is a **validated dedup**: games are listed per-team, so the 1,044 intra-top-50
-matchups each appear twice (mirror-checked: 0 score mismatches) while 1,086 games vs outside teams appear
-once → **2,130 unique games**. Also derives the two missing Level-0 fields — **week** (week 1 ≤ 2025-09-09,
-then Wed→Tue buckets) and a **year** on the bare date (Aug–Dec→2025, Jan–Jul→2026). **Keeps** the 215
-outside-top-50 opponents for schedule strength. **Purely additive** — new `ingest/` package + `data/real/`
-+ a new report; touches no model/generator/harness/scenario, so **parallel-safe** with anything. Runs
-**no model and no accuracy metric** (real data has no planted truth — the comparison yardstick is a
-deliberate follow-up). No deps. First **Stage-B** step (formally a scope expansion past the synthetic spike).
+**TASK-19** migrate the evaluation gate from synthetic to real data — sonnet. Deps (15/16/17) all **done**,
+so this is unblocked. Build the real-data gate (`harness/*` real-data scoring, `analysis/*`, `reports/*`)
+that makes the **MHR gauntlet** the project's adjudicator instead of synthetic rank-recovery — the pivot
+the owner committed to (and that just decided TASK-18: see `docs/analysis/goal-profile-residual.md`).
+**Purely additive** (`yes (additive)`). Start with `/task 19`.
+
+~~**TASK-18** opponent-relative goal-profile residual — opus.~~ (**SHELVED**, #16). Prototyped a
+clamped, opponent-baseline-centered residual; the real gauntlet showed it monotonically *costs*
+head-to-head agreement (β=0.05: 0.8351 → 0.8031, below MHR 0.8296) with no weight improving it. No model
+change shipped; kept as a finding (`docs/analysis/goal-profile-residual.md`) + a strict-`xfail` S15.
+Revisit at **B4** when walk-forward prediction gives a real accuracy adjudicator.
+
+~~**TASK-15** real MHR data loader + data-quality report — sonnet~~ (done, #13). 2,130 deduped Level-0
+games + quality report; first Stage-B step.
 
 ~~**TASK-14** point-in-time truth for trajectory scenarios — sonnet.~~ (done, #12)
 
@@ -68,7 +72,7 @@ B4 walk-forward. The next core-model link, if any, follows from the real-data ga
 | 15 | Real MHR data loader + data-quality report | **done** | sonnet | ingest/* (new), data/real/* (new), reports/real-data-quality.md (new) | yes (additive) | — |
 | 16 | Head-to-head agreement + giant-killer case studies (real) | **done** | sonnet | analysis/* (new), reports/real-h2h.md (new) | yes (after 15) | 15 |
 | 17 | Resolve the closing-schedule floor cost (surprise-centered credit) | **done** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s14_closing_schedule.py, reports/comparison.md | no (core) | 15, 16 |
-| 18 | Opponent-relative goal-profile residual (over/under-perform vs opponent goal baseline) — **SHELVED** (negative result; no model change) | **in-review** | opus | docs/analysis/goal-profile-residual.md, scenarios/test_s15_goal_profile.py (xfail), scenarios/builders.py | no (core) | 17 |
+| 18 | Opponent-relative goal-profile residual (over/under-perform vs opponent goal baseline) — **SHELVED** (negative result; no model change) | **done** | opus | docs/analysis/goal-profile-residual.md, scenarios/test_s15_goal_profile.py (xfail), scenarios/builders.py | no (core) | 17 |
 | 19 | Migrate the evaluation gate from synthetic to real data | **ready** | sonnet | harness/* (new real-data gate), analysis/*, reports/* | yes (additive) | 15, 16, 17 |
 
 ## Notes
