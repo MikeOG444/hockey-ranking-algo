@@ -52,13 +52,13 @@ def test_s07_i6_credit_loss_elite_beats_win_weak():
     game_vs_top = None
     game_vs_bottom = None
 
-    # The attribution entries are ordered canonically; find by base value.
-    # game_vs_top: schedule_term ≈ α * r_top (positive, large)
-    # game_vs_bottom: schedule_term ≈ α * r_bottom (negative)
+    # Identify the two games by result (TASK-17: `base` is now the *centered* result quality, not the
+    # old 3/0 floor, so a base-magnitude lookup is invalid — use the `is_win` flag). T_SUBJECT played
+    # exactly one loss (to T_TOP) and one win (over T_BOTTOM).
     for bd in subject_attr:
-        if bd.base == 0.0:  # a loss — must be vs T_TOP (T_SUBJECT lost to T_TOP)
+        if not bd.is_win:   # the loss — vs T_TOP
             game_vs_top = bd
-        elif bd.base == 3.0:  # a win — must be vs T_BOTTOM
+        else:               # the win — over T_BOTTOM
             game_vs_bottom = bd
 
     assert game_vs_top is not None, (
@@ -105,8 +105,8 @@ def test_s07_i6_alpha08_sweep():
     subject_attr = result.per_game_attribution.get("T_SUBJECT", [])
     assert subject_attr
 
-    game_vs_top = next((bd for bd in subject_attr if bd.base == 0.0), None)
-    game_vs_bottom = next((bd for bd in subject_attr if bd.base == 3.0), None)
+    game_vs_top = next((bd for bd in subject_attr if not bd.is_win), None)
+    game_vs_bottom = next((bd for bd in subject_attr if bd.is_win), None)
 
     assert game_vs_top is not None, "Cannot find loss-to-T_TOP game in attribution at α=0.8"
     assert game_vs_bottom is not None, "Cannot find win-over-T_BOTTOM game in attribution at α=0.8"

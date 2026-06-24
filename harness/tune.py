@@ -169,21 +169,29 @@ def mhr_mean_spearman() -> float:
 
 def satisfies_i6(point: GridPoint) -> bool:
     """End-to-end I6 at the reachable gap (S07): a 1-goal loss to the elite must out-credit a
-    1-goal win over the worst, on the *converged* spread under this candidate's params."""
+    1-goal win over the worst, on the *converged* spread under this candidate's params.
+
+    Games are identified by ``is_win`` (TASK-17): under surprise-centered credit ``base`` is the
+    centered result quality (no longer the 3/0 floor), so the old base-magnitude lookup is invalid.
+    T_SUBJECT has exactly one loss (to T_TOP) and one win (over T_BOTTOM)."""
     params = candidate_params(point)
     dataset, _meta = build_s07_close_vs_tier()
     result = rate_weekly(dataset.games, params, rho=point.rho, rho_tier=point.rho)
     attr = result.per_game_attribution.get("T_SUBJECT", [])
-    loss = next((bd for bd in attr if bd.base == 0.0), None)   # the loss to T_TOP
-    win = next((bd for bd in attr if bd.base == 3.0), None)    # the win over T_BOTTOM
+    loss = next((bd for bd in attr if not bd.is_win), None)  # the loss to T_TOP
+    win = next((bd for bd in attr if bd.is_win), None)       # the win over T_BOTTOM
     if loss is None or win is None:
         return False
     return loss.total > win.total
 
 
 def satisfies_contraction(point: GridPoint, lam: float = LAM_DEFAULT) -> bool:
-    """I9 stays a contraction: the alpha-coupling map contracts iff ``alpha*(1-lam) < 1``."""
-    return point.alpha * (1.0 - lam) < 1.0
+    """I9 stays a contraction. Under surprise-centered credit (TASK-17) the damped update has a
+    self-anchor weight ``(1-alpha)`` and an opponent-coupling weight ``alpha`` that sum to 1, so the
+    map contracts with factor ``(1-lam)`` for ANY ``alpha`` in [0, 1) — the contraction no longer
+    depends on alpha (it is *stronger* than the old ``alpha*(1-lam)`` bound). The remaining
+    requirement is ``alpha < 1`` so the self-anchor weight stays non-negative (a convex split)."""
+    return 0.0 <= point.alpha < 1.0 and lam > 0.0
 
 
 def is_feasible(point: GridPoint) -> bool:

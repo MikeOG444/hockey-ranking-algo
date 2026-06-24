@@ -1,15 +1,23 @@
-"""The bespoke rating model (memo §1, §9) — the primary candidate.
+"""The bespoke rating model (memo §1, §3.1, §9) — the primary candidate.
 
-Per-game credit is an additive decomposition so the fairness floor is structural, not tuned:
+Per-game credit is **surprise-centered** (TASK-17, memo §3.1): it anchors on the team's own rating and
+adds the surprise of the result against the opponent —
 
-    credit = base(result) + marginAdj(result, bucket, tier) + alpha * opp_rating
+    raw    = base(result) + marginAdj(result, bucket, tier) + alpha*opp_rating + (1-alpha)*own_rating
+    credit = max(raw, own_rating)  for a WIN  (the win-floor: a win never lowers you);  raw otherwise
 
-- base(result) is a pure floor (W > T > L); nothing may override it -> guarantees I1.
-- marginAdj modulates only the bonus/penalty: wins add a bounded, diminishing bonus; losses
+- ``base(result)`` is now the CENTERED result quality (win=0.5, tie=0.0, loss=-0.25 — *not* the old
+  3/1/0 floor); the fairness floor is structural via the **win-floor** (a win is floored at your own
+  rating), which realizes "a win is not a loss" while making an *expected* win ~neutral.
+- ``marginAdj`` modulates only the bonus/penalty: wins add a bounded, diminishing bonus; losses
   subtract a penalty that is zero for close (1-2) losses -> I2/I3/I4. Ties get nothing -> I5.
-- the schedule term is result-INDEPENDENT (a refinement of memo §1.3, which had a result-
-  dependent weight that could flip same-opponent ordering): identical for win/tie/loss vs the
-  same opponent, so it never threatens I1, yet still rewards playing up / debits playing down (I6/I10).
+- ``schedule_term = alpha*opp_rating`` (strength of schedule) and ``self_term = (1-alpha)*own_rating``
+  (the recentering anchor) are BOTH result-INDEPENDENT: identical for win/tie/loss vs the same
+  opponent, so they never threaten same-opponent ordering (I1), yet still reward playing up / debit
+  playing down (I6/I10). The damped solve is an unconditional ``(1-lambda)`` contraction for any
+  alpha in [0,1) because the self-weight ``(1-alpha)`` and opponent-weight ``alpha`` form a convex
+  split (memo §3.1) — this is the SAFE convex form of the self-reference, distinct from the divergent
+  ``-r_i`` form rejected in memo §1.3 (coefficient +(1-alpha), not -alpha).
 """
 
 import math
@@ -22,11 +30,32 @@ from models.tiers import TierWindow, detect_tiers
 
 @dataclass(frozen=True)
 class CreditBreakdown:
-    """The named drivers of one game's credit — this IS the per-game attribution (I12)."""
+    """The named drivers of one game's credit — this IS the per-game attribution (I12).
+
+    Credit is *surprise-centered* (TASK-17): a game's credit is the team's OWN current rating plus the
+    surprise of the result against this opponent. Concretely
+
+        raw   = base + margin_adj + schedule_term + self_term
+        total = max(raw, own_rating)  for a WIN  (the win-floor: a win never lowers you);  raw otherwise
+
+    where ``schedule_term = alpha*r_opp`` (who you played) and ``self_term = (1-alpha)*own_rating`` (the
+    recentering anchor). Equivalently ``total = own_rating + [clamp_{>=0} for wins] (base + margin_adj +
+    alpha*(r_opp - own_rating))`` — beating a much weaker team yields surprise <= 0, so the win-floor
+    pins the credit to your own rating (neutral: a cheap win shows nothing but never costs you); a close
+    loss to a much stronger team yields a small positive surprise (an honorable near-upset nudges you up).
+    """
 
     base: float
     margin_adj: float
     schedule_term: float
+    # The recentering anchor (1-alpha)*own_rating — the self-reference that makes credit relative to the
+    # team's own strength (memo §3.1, re-derived in TASK-17). Default 0.0 keeps legacy construction sites
+    # (own_rating absent) byte-identical to the pre-surprise behaviour.
+    self_term: float = 0.0
+    # The team's own current rating — the win-floor level and the anchor (own_rating == self_term/(1-alpha)).
+    own_rating: float = 0.0
+    # Whether this game is a win — only wins are floored at own_rating (ties/losses carry full downside, I1).
+    is_win: bool = False
     # The game's recency weight w_g = exp(-rho*(now - week_g)) ∈ (0, 1] (memo §2, §7-§8). It scales
     # the *whole* credit inside the per-game weighted mean — it is NOT part of `total` (which is the
     # raw per-game credit). Defaults to 1.0 so the flat (rho=0) path and every existing construction
@@ -34,8 +63,16 @@ class CreditBreakdown:
     w: float = 1.0
 
     @property
+    def raw(self) -> float:
+        """The unclamped surprise-centered credit (sum of the four named drivers)."""
+        return self.base + self.margin_adj + self.schedule_term + self.self_term
+
+    @property
     def total(self) -> float:
-        return self.base + self.margin_adj + self.schedule_term
+        """Per-game credit. Wins are floored at ``own_rating`` (a win never lowers you); a tie/loss is the
+        raw value, so it can fall below your rating when you under-perform a weaker opponent (I1 intact:
+        vs the SAME opponent the win-floor only ever raises a win above the tie/loss raw value)."""
+        return max(self.raw, self.own_rating) if self.is_win else self.raw
 
 
 @dataclass(frozen=True)
@@ -50,9 +87,16 @@ class BespokeParams:
     0.2 — also the sweep's pick, and kept off 0 so the I11 trend feature survives.
     """
 
-    win: float = 3.0
-    tie: float = 1.0
-    loss: float = 0.0
+    # Surprise-centered result quality (TASK-17). These are NO LONGER an absolute floor (the old
+    # 3/1/0) — they are *centered* values measuring how good a result is, so the expectation term
+    # alpha*(r_opp - own) can cancel them. Centering is what makes an expected win neutral: beating a
+    # team ~0.67 below you (win=0.5, alpha=0.75 ⇒ 0.5/0.75) yields surprise <= 0, and the win-floor pins
+    # the credit to your own rating (a cheap win shows nothing). tie = 0 is the neutral baseline; a close
+    # loss starts at -0.25 (honorable — small) and deepens with the margin penalty. The ordering
+    # win > tie > loss is preserved (I1-I5 are relational, not tied to the old magnitudes).
+    win: float = 0.5
+    tie: float = 0.0
+    loss: float = -0.25
     # Margin bonus for wins (diminishing, capped) and penalty for losses (close = 0, increasing).
     win_bonus: dict[str, float] = field(default_factory=lambda: {"close": 0.0, "3": 0.6, "4": 0.9, "5+": 1.0})
     loss_penalty: dict[str, float] = field(default_factory=lambda: {"close": 0.0, "3": 0.5, "4": 0.8, "5+": 1.0})
@@ -114,10 +158,13 @@ def classify(goals_for: int, goals_against: int) -> str:
 
 
 def base_and_margin(goals_for: int, goals_against: int, params: BespokeParams) -> tuple[float, float]:
-    """The opponent-independent part of credit: (base floor, margin adjustment).
+    """The opponent- and self-independent part of credit: (centered result quality, margin adjustment).
 
-    This is the piece that holds invariants I1-I5; it does not depend on any rating, so in the
-    schedule solve it is a constant per game (only the schedule term re-rates each iteration).
+    ``base`` is the CENTERED result quality (win/tie/loss = 0.5/0.0/-0.25 by default — TASK-17, not the
+    old 3/1/0 floor). This is the piece that holds invariants I1-I5; it depends on no rating, so in the
+    schedule solve it is a constant per game (only the schedule term and the self-anchor re-rate each
+    iteration). The fairness floor now lives in the per_game_credit win-floor (max(raw, own_rating)),
+    not in the magnitude of ``base``.
     """
     result = classify(goals_for, goals_against)
     base = {"W": params.win, "T": params.tie, "L": params.loss}[result]
@@ -158,19 +205,32 @@ def per_game_credit(
     opp_rating: float,
     opp_tier: int,
     params: BespokeParams,
+    own_rating: float = 0.0,
 ) -> CreditBreakdown:
-    """One game's credit from a team's perspective.
+    """One game's surprise-centered credit from a team's perspective (TASK-17).
 
-    The schedule term is the opponent's CURRENT rating scaled by alpha (strength of schedule,
-    floating per I10) — result-independent, so it never disturbs same-opponent ordering (I1). The
-    margin adjustment is scaled by the opponent's tier modulator (memo §1.2): playing up raises the
-    win bonus / softens the loss penalty, always on the adjustment and never on `base`.
-    """
+    Credit anchors on the team's OWN rating and adds the surprise of the result against this opponent:
+    ``total = max(raw, own_rating)`` for a win, ``raw`` otherwise, with
+    ``raw = base + margin_adj + schedule_term + self_term``. The schedule term ``alpha*r_opp`` (who you
+    played) and the self term ``(1-alpha)*own_rating`` (the recentering anchor) are both result-
+    INDEPENDENT, so they never disturb same-opponent ordering (I1); the win-floor only ever *raises* a
+    win, never a tie/loss, so a win still out-credits a tie/loss vs the SAME opponent. The margin
+    adjustment is scaled by the opponent's tier modulator (memo §1.2), always on the adjustment and
+    never on `base`. ``own_rating`` defaults to 0 so the isolated credit-function invariant tests
+    (which fix the opponent and the self anchor at 0) read the centered quality directly."""
     base, raw_margin = base_and_margin(goals_for, goals_against, params)
     result = classify(goals_for, goals_against)
     margin_adj = scaled_margin(raw_margin, result, opp_tier, params)
     schedule_term = params.alpha * opp_rating
-    return CreditBreakdown(base=base, margin_adj=margin_adj, schedule_term=schedule_term)
+    self_term = (1.0 - params.alpha) * own_rating
+    return CreditBreakdown(
+        base=base,
+        margin_adj=margin_adj,
+        schedule_term=schedule_term,
+        self_term=self_term,
+        own_rating=own_rating,
+        is_win=(result == "W"),
+    )
 
 
 # --- the schedule solve (memo §2-§3) ---------------------------------------
@@ -275,9 +335,13 @@ def _solve(
                 continue
             total = 0.0
             wsum = 0.0
+            own = r[t]  # the team's CURRENT rating — the surprise anchor and win-floor level (TASK-17)
             for base, raw_margin, opp, result, week in ent:
                 w = _recency_weight(week, now, rho)
-                total += w * (base + margin_fn(raw_margin, result, opp) + params.alpha * r[opp])
+                # Surprise-centered credit: anchor on own rating, add who-you-played + result surprise.
+                raw = base + margin_fn(raw_margin, result, opp) + params.alpha * r[opp] + (1.0 - params.alpha) * own
+                credit = max(raw, own) if result == "W" else raw  # win-floor: a win never lowers you (I1)
+                total += w * credit
                 wsum += w
             new[t] = (1.0 - lam) * (total / wsum)
         mean = sum(new.values()) / len(new)
@@ -308,11 +372,15 @@ def _attribute(
     pre: dict[str, float] = {}
     for t in teams:
         ent = entries[t]
+        own = r[t]  # converged own rating — the surprise anchor + win-floor level (I12 attribution)
         breakdowns = [
             CreditBreakdown(
                 base=base,
                 margin_adj=margin_fn(raw_margin, result, opp),
                 schedule_term=params.alpha * r[opp],
+                self_term=(1.0 - params.alpha) * own,
+                own_rating=own,
+                is_win=(result == "W"),
                 w=_recency_weight(week, now, rho),
             )
             for base, raw_margin, opp, result, week in ent

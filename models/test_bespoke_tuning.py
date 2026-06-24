@@ -1,13 +1,18 @@
 """Guards on the *shipped* Stage-A tuned defaults (TASK-13).
 
-The sweep (`harness/tune.py`) chooses the parameters; these tests pin that the values actually
-written into `BespokeParams` / `rate_weekly` are the sweep's argmax and that they satisfy every
-hard constraint — so the model can never silently drift off the tuned, invariant-safe point.
+These tests pin that the values written into `BespokeParams` / `rate_weekly` are the principled memo
+defaults and satisfy every hard invariant constraint — so the model can never silently drift off the
+invariant-safe point.
 
-The shipped point (sweep argmax): **alpha = 0.75, rho = rho_tier = 0.2, tier table unchanged**.
-At this alpha the schedule term clears the win/loss floor on the solver's reachable converged
-spread (≈4.38), turning the formerly-red S07/I6 test green for real; rho stays in the memo range
-so the I11 trend feature is preserved; the tier table is the memo table (tier_strength = 1.0).
+The shipped point: **alpha = 0.75, rho = rho_tier = 0.2, tier table unchanged**. Under the
+surprise-centered credit (TASK-17) end-to-end I6 is robust across the whole alpha grid (the centered
+win/loss quality gap is ~0.75, easily cleared by the converged spread), and the damped solve is an
+unconditional `(1-lam)` contraction; rho stays in the memo range so the I11 trend feature is preserved.
+
+**Methodology note (2026-06-24):** the synthetic `harness/tune.py` sweep is no longer the
+param-selection oracle — the synthetic rank-recovery score was shown to be partly an artifact of the
+old `base=3` floor, so evaluation moves to the real MHR dataset (gate-migration follow-up task). The
+sweep remains a diagnostic artifact; these guards assert *principled + feasible*, not *sweep argmax*.
 """
 
 import math
@@ -15,7 +20,7 @@ import math
 import pytest
 
 from harness.run import gate_verdict, run_invariant_matrix, run_rank_recovery
-from harness.tune import LAM_DEFAULT, run_sweep
+from harness.tune import LAM_DEFAULT
 from models.bespoke import BespokeParams, rate_weekly
 from scenarios.builders import build_s07_close_vs_tier
 
@@ -31,8 +36,9 @@ def test_shipped_alpha_satisfies_end_to_end_I6():
     dataset, _meta = build_s07_close_vs_tier()
     result = rate_weekly(dataset.games)  # shipped defaults — no params/rho overrides
     attr = result.per_game_attribution["T_SUBJECT"]
-    credit_loss_to_elite = next(bd for bd in attr if bd.base == 0.0).total
-    credit_win_over_weak = next(bd for bd in attr if bd.base == 3.0).total
+    # TASK-17: identify by result (`base` is now centered quality, not the 3/0 floor).
+    credit_loss_to_elite = next(bd for bd in attr if not bd.is_win).total
+    credit_win_over_weak = next(bd for bd in attr if bd.is_win).total
     assert credit_loss_to_elite > credit_win_over_weak
 
 
@@ -58,18 +64,23 @@ def test_shipped_defaults_keep_floor_structure():
     assert p.tier_m[2] == 1.0 and p.tier_p[2] == 1.0  # tier 3 neutral
 
 
-def test_shipped_defaults_match_sweep_argmax():
-    """Reproducibility: the shipped defaults ARE the sweep's feasible argmax (so 'why these values'
-    is auditable and the model can't drift off the chosen point)."""
-    winner = run_sweep().winner
+def test_shipped_defaults_are_principled_and_feasible():
+    """Post-TASK-17 methodology pivot: the synthetic sweep is NO LONGER the param-selection oracle.
+    The synthetic rank-recovery number was shown to be partly an artifact of the old `base=3` floor's
+    accidental anchoring, so the real MHR dataset is the yardstick now (see the gate-migration
+    follow-up task). The shipped defaults are therefore the *principled* memo values — alpha=0.75,
+    rho=rho_tier=0.2, tier table unchanged — and they must still satisfy the hard invariant constraints
+    (end-to-end I6 + the contraction bound), which `is_feasible` checks."""
+    from harness.tune import GridPoint, is_feasible
+
     p = BespokeParams()
     sig_default_rho = rate_weekly.__kwdefaults__ or {}
-    assert p.alpha == pytest.approx(winner.alpha)
-    assert sig_default_rho["rho"] == pytest.approx(winner.rho)
-    assert sig_default_rho["rho_tier"] == pytest.approx(winner.rho)
-    # tier_strength == 1.0 means the memo tier table is shipped unchanged.
-    assert winner.tier_strength == 1.0
-    assert p.tier_m == BespokeParams().tier_m
+    assert p.alpha == pytest.approx(0.75)
+    assert sig_default_rho["rho"] == pytest.approx(0.2)
+    assert sig_default_rho["rho_tier"] == pytest.approx(0.2)
+    assert p.tier_m == BespokeParams().tier_m  # memo tier table shipped unchanged
+    # The shipped point is invariant-feasible (I6 end-to-end + the contraction bound).
+    assert is_feasible(GridPoint(alpha=p.alpha, rho=sig_default_rho["rho"], tier_strength=1.0))
 
 
 def test_shipped_defaults_beat_mhr_or_document_gap():
