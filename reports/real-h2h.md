@@ -16,7 +16,7 @@ rater's input (schedule-strength signal).
 
 | Model | Spearman ρ vs Gauntlet |
 |-------|------------------------|
-| bespoke (rate_weekly) | 0.8509 |
+| bespoke (rate_weekly) | 0.8351 |
 | mhr_replica | 0.8296 |
 
 ## Biggest Movers: MHR Rank → Gauntlet Rank
@@ -55,7 +55,7 @@ and outside-top-50 teams earn noisy, low ratings on few games.
 | vs ranked | 13-10-1 | 117 | 96 | +21 | 56.2% |
 | vs unranked | 35-2-0 | 283 | 76 | +207 | 94.6% |
 
-**Bespoke `scheduleTerm` (avg per game):** vs ranked = 0.870; vs unranked = -0.374. A lower schedule term means bespoke credits this team less for those wins — the orthogonal SOS channel is doing its job.
+**Bespoke `scheduleTerm` (avg per game):** vs ranked = 0.556; vs unranked = -0.390. A lower schedule term means bespoke credits this team less for those wins — the orthogonal SOS channel is doing its job.
 
 ### South Shore Kings (Elite) 11U AAA (MHR #10 → Gauntlet #14, Δ -4)
 
@@ -64,7 +64,7 @@ and outside-top-50 teams earn noisy, low ratings on few games.
 | vs ranked | 32-22-6 | 257 | 191 | +66 | 58.3% |
 | vs unranked | 0-1-1 | 3 | 6 | -3 | 25.0% |
 
-**Bespoke `scheduleTerm` (avg per game):** vs ranked = 0.681; vs unranked = 1.052. A lower schedule term means bespoke credits this team less for those wins — the orthogonal SOS channel is doing its job.
+**Bespoke `scheduleTerm` (avg per game):** vs ranked = 0.705; vs unranked = 1.081. A lower schedule term means bespoke credits this team less for those wins — the orthogonal SOS channel is doing its job.
 
 ### Top Gun (Elite) 11U AAA (MHR #11 → Gauntlet #12, Δ -1)
 
@@ -73,7 +73,7 @@ and outside-top-50 teams earn noisy, low ratings on few games.
 | vs ranked | 35-22-6 | 302 | 205 | +97 | 60.3% |
 | vs unranked | 5-1-0 | 31 | 17 | +14 | 83.3% |
 
-**Bespoke `scheduleTerm` (avg per game):** vs ranked = 0.629; vs unranked = 0.900. A lower schedule term means bespoke credits this team less for those wins — the orthogonal SOS channel is doing its job.
+**Bespoke `scheduleTerm` (avg per game):** vs ranked = 0.633; vs unranked = 0.824. A lower schedule term means bespoke credits this team less for those wins — the orthogonal SOS channel is doing its job.
 
 ## Gauntlet Ranking (Top-25 by Points%)
 

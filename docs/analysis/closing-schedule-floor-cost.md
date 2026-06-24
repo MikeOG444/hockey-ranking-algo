@@ -1,7 +1,25 @@
 # The closing-schedule floor cost (real-data finding)
 
-**Status:** open finding from Stage-B B2 analysis (real MHR 2025-26 top-50). Motivates a model-core task
-(TASK-17). This is the most consequential weakness the real-data run has surfaced.
+**Status: RESOLVED (2026-06-24, TASK-17)** — fixed by **surprise-centered credit** (option 2+3, strong
+form). Per-game credit was recentered from the `base = 3/1/0` floor to `own_rating + surprise`: an
+*expected* win (beating a much weaker team) is ~neutral (the win is floored at your own rating) and a
+close loss to an elite earns a small positive surprise. The owner reframed the fairness principle from
+*"a win must always count"* to *"a win is not a loss"* to allow it.
+
+**Real-data confirmation:** Woodbridge fell **#9 → #18**, Mid-Fairfield (Elite) rose **#14 → #6** — the
+5-0 head-to-head winner now ranks above the team it swept; schedule-padded Dallas Stars Elite (7-9-1)
+dropped out of the top 20 (`reports/real-h2h.md`). Synthetic confirming scenario: **S14**
+(`scenarios/test_s14_closing_schedule.py`). **Cost (reported honestly):** synthetic rank recovery
+regressed 0.8019 → 0.7031, concentrated in scenarios unrepresentative of real play — which motivated the
+methodology pivot to evaluating on the **real MHR dataset** going forward (`reports/comparison.md` §4).
+All I1–I13 still hold; the solve is now an unconditional `(1−λ)` contraction.
+
+The original open-finding analysis is preserved below as the motivating write-up.
+
+---
+
+**Original status:** open finding from Stage-B B2 analysis (real MHR 2025-26 top-50). Motivated the
+model-core task (TASK-17). The most consequential weakness the real-data run surfaced.
 
 ## The symptom
 

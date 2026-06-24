@@ -37,12 +37,18 @@ input can touch it. Modulation is confined to `marginAdj` (and the schedule term
 *different* opponent). This makes the fairness invariants **structural**, not emergent — they hold by the
 *shape* of the formula, not by lucky parameter values.
 
-### 1.1 `base` — the result floor (I1, I5)
+### 1.1 `base` — the result quality (I1, I5)
 ```
-base(W) = W,  base(T) = T,  base(L) = L,   with  W > T > L.   Strawman: 3 / 1 / 0.
+base(W) = W,  base(T) = T,  base(L) = L,   with  W > T > L.
 ```
+> **Superseded by TASK-17 (§3.1).** The strawman magnitudes were `3 / 1 / 0` (an absolute floor); they are
+> now **centered** to `0.5 / 0.0 / -0.25`, and the fairness floor moved from `base`'s magnitude to the
+> per-game **win-floor** (`credit = max(raw, own_rating)` for a win). `base` is now the *centered result
+> quality* feeding the surprise, not an absolute floor. The same-opponent argument below still holds.
+
 Against the **same opponent**, holding margin fixed, `credit(W) ≥ credit(T) ≥ credit(L)` because the
-`base` gap dominates and `marginAdj`/`scheduleTerm` are identical for the same opponent+margin. → **I1, I5.**
+`base` gap dominates and `marginAdj`/`scheduleTerm` (and, post-TASK-17, `self_term`) are identical for the
+same opponent+margin, and the win-floor only ever *raises* a win. → **I1, I5.**
 
 ### 1.2 `marginAdj` — bounded, signed, bucketed (I2, I3, I4)
 ```
@@ -77,6 +83,13 @@ scheduleTerm = α · R_j                       # credit for the strength of who 
    `α·R_j` (standard strength-of-schedule) gives spectral radius `α(1−λ) < 1` for all α<1 → clean
    convergence (I9). It is also more faithful to principle 6, which speaks of *absolute* opponent tier
    ("a top team", "a weak team"), not strength relative to self.
+
+> **TASK-17 note (§3.1):** TASK-17 reintroduces an own-rating term, but as a **separate, additive
+> `self_term = +(1−α)·r_i`** — NOT by folding `−r_i` into the schedule term. The distinction is exactly
+> what makes it safe: the rejected `α·(R_j − r_i)` form has self-coefficient **`−α`** (→ spectral radius
+> `2α(1−λ)`, divergent); the TASK-17 form has self-coefficient **`+(1−α)`**, so the self-weight `(1−α)`
+> and opponent-weight `α` form a **convex split** (sum 1) and the map contracts at `(1−λ)` for *any*
+> α∈[0,1). The `scheduleTerm` itself is unchanged (`α·R_j`); the self-reference lives in its own channel.
 
 Net effect: `scheduleTerm` is **identical for win/tie/loss vs the same opponent**, so it shifts
 cross-opponent comparisons (I6/I10) **without ever affecting same-opponent ordering** (I1) — that
@@ -150,6 +163,48 @@ any input order → byte-identical output. We will *test* order-invariance by sh
 > This is why the brief favors a convergent batch solve over Elo/Glicko (which are order-dependent and
 > stochastic). Elo stays only as a benchmark.
 
+### 3.1 TASK-17 addendum — surprise-centering supersedes the absolute `base` floor
+
+**Why.** On real data the absolute `base = 3/1/0` floor over-credited cheap wins: beating a near-zero
+team banked the full `base = 3`, so a team padding soft late wins (Woodbridge) out-ranked a team losing
+honorably to elites (Mid-Fairfield) despite a 5-0 head-to-head. The floor *"a win must always count"* was
+the wrong principle — beating an opponent you beat 99.99% of the time demonstrates no strength. The owner
+reframed it to *"a win is not a loss"*: a win never *lowers* you, but an *expected* win is ~neutral.
+
+**New credit (replaces the `base = 3/1/0` magnitudes; structure of §1 otherwise intact).** Per game,
+from team *i* vs opponent *j*:
+
+```
+surprise = base_c + marginAdj + α·(r_j − r_i)          # base_c CENTERED: win=+0.5, tie=0, loss=−0.25
+credit   = r_i + surprise                               # = base_c + marginAdj + α·r_j + (1−α)·r_i
+         = max(raw, r_i)  for a WIN                      # the win-floor: a win never lowers you
+```
+
+So the credit anchors on the team's own rating `r_i` (the new `self_term = (1−α)·r_i`) and adds the
+surprise of the result against this opponent. An *expected* win (`r_j ≪ r_i`) gives `surprise ≤ 0`, the
+win-floor clamps the credit to `r_i` (neutral); a close loss to an elite (`r_j ≫ r_i`) gives a small
+positive surprise. **I1 (same-opponent) is intact:** `r_i`, `self_term`, and `α·r_j` are identical across
+W/T/L vs the same opponent, so the ordering is decided by `base_c(W) > base_c(T) > base_c(L)`, and the
+win-floor only ever *raises* a win. **I6 is now robust** at every usable α — centering shrank the win/loss
+quality gap from 3 to ~0.75, easily cleared by the converged spread (no α floor needed).
+
+**Convergence re-derivation (the I9 obligation).** The damped update is `r_i ← (1−λ)·mean_g(credit_g) −
+r̄`. For an unclamped game `credit_g = base_c + marginAdj + α·r_j + (1−α)·r_i`, so within one game the
+self-coefficient `(1−α)` and the opponent-coupling `α` **sum to exactly 1**; for a clamped win
+`credit_g = r_i` (self-coefficient 1, opponent-coupling 0) — still summing to 1. Hence every row of the
+update's Jacobian has 1-norm `(1−λ)·1 = (1−λ)`, so `T` is a contraction with factor **`(1−λ)` for any
+α ∈ [0, 1)** — *independent of α*, and strictly stronger than the old `α(1−λ)` bound. Banach ⇒ unique
+fixed point from any start → **I9 preserved**. The fixed point is the Massey/Elo-style equilibrium
+`r_i = ((1−λ)/λ)·mean_surprise_i` (your rating sits where your results stop surprising). Determinism (I8)
+is unchanged: the self-anchor `r_i` is read from the previous iterate (Jacobi sweep), the clamp `max(·)`
+is deterministic, no RNG.
+
+**Channel orthogonality (no double-count).** `self_term = (1−α)·r_i` is the recentering *anchor*, not an
+opponent-strength term — the two opponent-strength channels remain `scheduleTerm = α·r_j` and the tier
+table, exactly as before. The reframe trades the floor's *absolute-level anchor* (which, on disconnected
+synthetic graphs, ranked teams by accident) for honesty; see `reports/comparison.md` §4 for the resulting
+synthetic rank-recovery cost and the pivot to real-data evaluation.
+
 ---
 
 ## 4. Tier detection (brief §2)
@@ -202,7 +257,8 @@ signs → **I11**. The tier `consistency` measure (§5) feeds the same trend/con
 
 ## 7. Explainability (I12)
 
-`perGameAttribution` returns, per game, the three terms `{base, marginAdj, scheduleTerm}` and `w_g`. By
+`perGameAttribution` returns, per game, the named terms `{base, marginAdj, scheduleTerm, self_term}`
+(TASK-17 added `self_term = (1−α)·own_rating`; for a floored win `total = max(raw, own_rating)`) and `w_g`. By
 construction these **sum to the rating components** (within tolerance) → **I12**. The weekly delta
 decomposes into **result-driven** (`Σ base+marginAdj` changes) vs **schedule-driven** (`Σ scheduleTerm`
 changes from opponents re-rating). A hockey parent reads: *"your rating rose 1.2 — +0.8 from your own
@@ -225,20 +281,25 @@ The MHR replica, ridge Massey, and bespoke all conform so the harness swaps them
 
 ---
 
-## 9. Defaults (Stage-A-tuned — TASK-13)
+## 9. Defaults (Stage-A-tuned — TASK-13; floor reframed — TASK-17)
 
-The shipped defaults below. Only `α` moved in Stage A (0.6 → 0.75); the floor (`W/T/L`, the
-bonus/penalty buckets) and the tier table are the original strawman, kept structural — they are
-what make I1–I5/I7 hold by construction, so they are not a tuning surface. The `α`/`ρ` picks are
-the argmax of the deterministic `harness/tune.py` rank-recovery sweep within the invariant-safe
-region; see §11 Q1 for the α derivation.
+The shipped defaults below.
+
+> **TASK-17 updates:** (1) `W/T/L` are now **centered** `0.5 / 0.0 / -0.25` (surprise-centering, §3.1) —
+> the fairness floor moved to the per-game **win-floor**, so the magnitudes are no longer an absolute
+> floor. (2) `α` is no longer derived from an I6 floor (centering made I6 robust at every α); it stays at
+> the memo value `0.75`, and the synthetic `tune.py` sweep is **retired as the param-selection oracle**
+> (the synthetic score was partly a floor artifact — evaluation pivots to real data, see
+> `reports/comparison.md` §4). The bonus/penalty buckets, tier table, ρ, λ are unchanged.
+
+The `α`/`ρ` picks are the **principled memo values** (formerly cross-checked by the rank-recovery sweep).
 
 | Param | Default | Notes |
 |---|---|---|
-| `W / T / L` | `3 / 1 / 0` | result floor; ordering enforced here (structural — untuned) |
+| `W / T / L` | `0.5 / 0.0 / -0.25` | **centered result quality (TASK-17, was `3/1/0`)**; fairness floor is now the per-game win-floor `max(raw, own_rating)`, structural — untuned |
 | `bonus[3/4/5+]` | `0.6 / 0.9 / 1.0` | diminishing: `Δ=0.6,0.3,0.1`; close=0 (structural — untuned) |
 | `pen[3/4/5+]` | `0.5 / 0.8 / 1.0` | close=0; increasing (structural — untuned) |
-| `α` (schedule) | `0.75` | **tuned (was 0.6).** Re-derived against the *reachable* converged spread (≈4.38) so end-to-end I6 holds (threshold ≈0.69), and the sweep argmax for rank recovery; `<1` keeps the I9 contraction (`α(1−λ)=0.71`). See §11 Q1. |
+| `α` (schedule) | `0.75` | memo value. **TASK-17:** I6 no longer constrains α (centering made it robust at every α); `<1` keeps the I9 contraction — now `(1−λ)` *unconditionally* (§3.1), stronger than the old `α(1−λ)`. The old "re-derive α against the ≈4.38 gap" rationale (§11 Q1) no longer binds. |
 | `m(tier)/p(tier)` | per-tier-gap scalars | modulate adjustment only (memo table unchanged; tier-strength sweep at ×2 did not help — orthogonal to α, Q3) |
 | `ρ` (game recency) | `0.2` (exp decay, ~½-life 3–4 wks) | recent heavier; sweep pick, kept off 0 so I11 trend survives |
 | `λ` (regularization) | `0.05` | unique fixed point (sets uniqueness not accuracy — untuned) |
@@ -280,7 +341,7 @@ not the pick, has the final word.
 
 | # | Decision | Rationale (criterion) | Confirming test → *falsified if* |
 |---|---|---|---|
-| **Q1 `α`** | **RESOLVED (TASK-13): derived `α = 0.75`.** Re-derived against the solver's *reachable* converged spread, not the hand-picked +4/−2 example. On the Scenario-7 league the centered spread converges to `R_TOP − R_BOTTOM ≈ 4.38`, so end-to-end I6 (`α·gap > W−L = 3`) needs `α ≳ 0.69` — the old `0.6` (calibrated to the credit-level gap of 6) sits *below* it and inverts I6 end-to-end. `α = 0.75` clears it with margin (`credit(loss→elite) 1.67 > credit(win→weak) 1.42` on converged ratings) **and** is the argmax of the Stage-A rank-recovery sweep (`harness/tune.py`) over the scorable §7 scenarios; stays `<1` for the I9 contraction (`α(1−λ)=0.71`). *Falsifiable assumption held:* an α clears I6 end-to-end without breaking convergence or recovery. **Confirming test green:** `scenarios/test_s07_close_vs_tier.py` (end-to-end I6 at the shipped default) + `models/test_bespoke_tuning.py`. | Structural invariant safety (1) sets the floor; rank-recovery (2) picks within range. | Scenarios 7 (I6), 3, 4 (I10) + convergence sweep. *Falsified if* no α clears I6 end-to-end without breaking convergence or recovery — **not falsified.** |
+| **Q1 `α`** | **SUPERSEDED by TASK-17 (§3.1):** centering shrank the W−L quality gap to ~0.75, so end-to-end I6 now holds at *every* α in the grid and no longer constrains α; the convergence bound is `(1−λ)` unconditionally (not `α(1−λ)`). The TASK-13 derivation below is kept as history (it was correct for the `3/1/0` floor model). — **RESOLVED (TASK-13): derived `α = 0.75`.** Re-derived against the solver's *reachable* converged spread, not the hand-picked +4/−2 example. On the Scenario-7 league the centered spread converges to `R_TOP − R_BOTTOM ≈ 4.38`, so end-to-end I6 (`α·gap > W−L = 3`) needs `α ≳ 0.69` — the old `0.6` (calibrated to the credit-level gap of 6) sits *below* it and inverts I6 end-to-end. `α = 0.75` clears it with margin (`credit(loss→elite) 1.67 > credit(win→weak) 1.42` on converged ratings) **and** is the argmax of the Stage-A rank-recovery sweep (`harness/tune.py`) over the scorable §7 scenarios; stays `<1` for the I9 contraction (`α(1−λ)=0.71`). *Falsifiable assumption held:* an α clears I6 end-to-end without breaking convergence or recovery. **Confirming test green:** `scenarios/test_s07_close_vs_tier.py` (end-to-end I6 at the shipped default) + `models/test_bespoke_tuning.py`. | Structural invariant safety (1) sets the floor; rank-recovery (2) picks within range. | Scenarios 7 (I6), 3, 4 (I10) + convergence sweep. *Falsified if* no α clears I6 end-to-end without breaking convergence or recovery — **not falsified.** |
 | **Q2 `T`** | **`T = 1` (the 3/1/0 scale).** Tie sits ⅓ toward a win — well below midpoint = "tying is not winning, no big bump" (rule 2); most legible value. | Explainability (3); recovery expected insensitive (2). | Scenario 8 (I5) + sensitivity `T∈{0.5,1,1.5}`. *Falsified if* recovery moves materially with T → data decides. |
 | **Q3 tier mod** | **Discrete (margin-bucket × tier) lookup table.** Stability comes from the §5 frozen recency-weighted window (that's what I13 is for), **not** from smoothing — smoothing by rating-gap would double-count `scheduleTerm`. Keep the two opponent channels orthogonal: `scheduleTerm`=strength-of-schedule, tier-table=how margin reads by tier. | Faithful to brief's 2-D surface + explainability (3); robustness via window (4). | Scenario 13 (no whipsaw once windowed) + **ablation**: each channel adds recovery, contributions not redundant (corr < ~0.7). *Falsified if* redundant → collapse to one channel. |
 | **Q4 weak-team win** | **Real but *bounded* debit, in the `scheduleTerm` channel only.** Rule 6 ("negative signal") ⇒ genuine debit, not withheld credit. Safe: debit lives in schedule, never in `base`/`marginAdj`, and the floor (I7) is about margin + schedule-matched comparisons, so I1/I4/I5/I7 hold structurally. Cap magnitude both directions ("cap the benefit"). | Invariant safety (1) via channel isolation; brief intent. | Scenarios 3, 6 + constructed schedule-matched I7 case. *Falsified if* the debit ever flips a schedule-matched result order. |

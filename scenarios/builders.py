@@ -815,3 +815,94 @@ def build_s13_freeze_window(seed: int = 42) -> tuple[Dataset, dict]:
         "sweep_windows": [1, 2, 3, 4],
         "invariants": ["I13"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Scenario 14 — Closing-schedule disparity (TASK-17, the Woodbridge/Mid-Fairfield case)
+# ---------------------------------------------------------------------------
+
+def build_s14_closing_schedule(seed: int = 42) -> tuple[Dataset, dict]:
+    """HONEST loses close to elites late; PADDER pads soft wins late. HONEST is truly stronger.
+
+    This is the deterministic synthetic mirror of the real Woodbridge/Mid-Fairfield finding
+    (`docs/analysis/closing-schedule-floor-cost.md`). Two subjects with an **identical early body of
+    work** diverge only in their **closing schedule**:
+
+    - **Early (weeks 1-6):** HONEST and PADDER play the *same* mid opponents (M1-M3) with the *same*
+      2-1 results — so their early credit, and therefore their early ratings, are identical. Any final
+      gap comes solely from the late games.
+    - **Late (weeks 7-9):** HONEST loses every game **2-3 (1-goal, "close")** to a genuine elite
+      (E1-E3); PADDER beats every game **4-1** over a genuine bottom team (W1-W3). Recency weighting
+      (I11) concentrates weight on exactly these late games.
+
+    Planted truth: HONEST is the stronger team (+0.9 vs +0.3) — hanging within one goal of elites
+    demonstrates more strength than beating cans. So the model **must** rank HONEST >= PADDER.
+
+    **Why it fails on the pre-TASK-17 model (this is the bug):** per-game credit is
+    `base(result) + margin + alpha*opp_rating` with `alpha < 1`. PADDER's soft win banks the 3.0 win
+    floor; HONEST's elite loss is capped at `alpha*R_elite < 3`. So a cheap win out-credits an honorable
+    loss, recency amplifies it, and the model ranks PADDER above HONEST — inverting the planted truth.
+    TASK-17's surprise-centered credit makes the soft win ~neutral (PADDER holds station) and the elite
+    loss ~neutral-or-up (HONEST holds/climbs), restoring HONEST >= PADDER.
+
+    Background round-robin (E beats W 8-0, E beats M 5-1, M beats W 5-1, every week 1-9) establishes the
+    elite/mid/weak tier spread the schedule term reads. Exact GameRows throughout (as in S03/S06/S07) so
+    the outcomes are controlled, not Poisson-dependent; `seed` is accepted for signature parity but the
+    dataset is fully deterministic without it (I8).
+    """
+    ground_truth = [
+        TeamParams(id="HONEST", attack=0.5, defense=-0.4),   # true +0.9 (genuinely strong)
+        TeamParams(id="PADDER", attack=0.2, defense=-0.1),   # true +0.3 (mediocre; pads weak wins)
+        TeamParams(id="E1", attack=1.2, defense=-1.0),       # true +2.2 (elite)
+        TeamParams(id="E2", attack=1.2, defense=-1.0),
+        TeamParams(id="E3", attack=1.2, defense=-1.0),
+        TeamParams(id="M1", attack=0.1, defense=0.0),        # true +0.1 (mid)
+        TeamParams(id="M2", attack=0.0, defense=0.0),
+        TeamParams(id="M3", attack=-0.1, defense=0.0),
+        TeamParams(id="W1", attack=-1.0, defense=1.0),       # true -2.0 (bottom)
+        TeamParams(id="W2", attack=-1.0, defense=1.0),
+        TeamParams(id="W3", attack=-1.0, defense=1.0),
+    ]
+
+    elite_ids = ["E1", "E2", "E3"]
+    mid_ids = ["M1", "M2", "M3"]
+    weak_ids = ["W1", "W2", "W3"]
+
+    games: list[GameRow] = []
+
+    def _g(week: int, team: str, opp: str, gf: int, ga: int) -> None:
+        date = f"2025-W{week:02d}"
+        games.append(GameRow(week=week, date=date, time="10:45",
+                             team=team, opponent=opp, goals_team=gf, goals_opponent=ga))
+        games.append(GameRow(week=week, date=date, time="10:45",
+                             team=opp, opponent=team, goals_team=ga, goals_opponent=gf))
+
+    # Background weeks 1-9: establish the elite >> mid >> weak spread the schedule term reads.
+    for week in range(1, 10):
+        for e in elite_ids:
+            for w in weak_ids:
+                _g(week, e, w, 8, 0)
+            for m in mid_ids:
+                _g(week, e, m, 5, 1)
+        for m in mid_ids:
+            for w in weak_ids:
+                _g(week, m, w, 5, 1)
+
+    # Early weeks 1-6: IDENTICAL bodies of work — both subjects beat the mids 2-1.
+    for week in range(1, 7):
+        for subject in ("HONEST", "PADDER"):
+            for m in mid_ids:
+                _g(week, subject, m, 2, 1)
+
+    # Late weeks 7-9: the closing-schedule disparity.
+    for week, (e, w) in enumerate(zip(elite_ids, weak_ids), start=7):
+        _g(week, "HONEST", e, 2, 3)   # close (1-goal) loss to an elite — honorable
+        _g(week, "PADDER", w, 4, 1)   # comfortable win over a bottom team — padding
+
+    dataset = Dataset(games=games, ground_truth=ground_truth)
+    return dataset, {
+        "honest_at_least_padder": ("HONEST", "PADDER"),
+        "elite_ids": elite_ids,
+        "weak_ids": weak_ids,
+        "invariants": [],  # additive confirming scenario (TASK-17); not a numbered invariant
+    }

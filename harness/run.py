@@ -92,6 +92,10 @@ _S11_BESPOKE_RHO_STATIC = -0.5000   # S11 bespoke Spearman under the season-aver
 _S11_MHR_RHO_STATIC     = -0.1000   # S11 mhr Spearman under the season-average static key
 _BESPOKE_MEAN_RHO_TASK13 = 0.6928   # bespoke mean Spearman after TASK-13, before TASK-14
 _MHR_MEAN_RHO_TASK13     = 0.7769   # mhr mean Spearman after TASK-13
+# Pre-TASK-17 reference points (the base=3/1/0 floor model, after TASK-14 point-in-time truth) —
+# the honest before/after baseline for the surprise-centered change (TASK-17).
+_BESPOKE_MEAN_RHO_PRE_TASK17 = 0.8019  # bespoke headline mean Spearman just before TASK-17
+_S05_BESPOKE_RHO_PRE_TASK17  = 0.3571  # S05 (giant-killer) bespoke Spearman just before TASK-17
 
 
 @dataclass(frozen=True)
@@ -322,48 +326,50 @@ def _attribution_section() -> str:
     """Render T_SUBJECT's per-game attribution from S07 — the I6 story in miniature.
 
     T_SUBJECT plays exactly two games: a 1-goal loss to the elite (T_TOP) and a 1-goal win over
-    the bottom (T_BOTTOM). The loss (base = loss floor) is identified by base == 0.0, the win by
-    base == 3.0 — the same canonical identification the S07 scenario test uses.
+    the bottom (T_BOTTOM). Under surprise-centered credit (TASK-17) games are identified by the
+    `is_win` flag — `base` is now the centered result quality, not the old 3/0 floor.
     """
     dataset, _meta = build_s07_close_vs_tier()
     result = rate_weekly(dataset.games)
     attr = result.per_game_attribution.get("T_SUBJECT", [])
 
-    loss_bd = next((bd for bd in attr if bd.base == 0.0), None)
-    win_bd = next((bd for bd in attr if bd.base == 3.0), None)
+    loss_bd = next((bd for bd in attr if not bd.is_win), None)
+    win_bd = next((bd for bd in attr if bd.is_win), None)
 
     lines = [
         "`T_SUBJECT` is an average team with two planted games: a narrow **loss to the league's "
         "best** (`T_TOP`) and a narrow **win over the league's worst** (`T_BOTTOM`). Each game's "
-        "credit is `base + margin_adj + schedule_term`; `w` is its recency weight in the season "
-        "mean.",
+        "credit is `max(base + margin_adj + schedule_term + self_term, own_rating)` for a win (the "
+        "win-floor) and the raw sum otherwise; `w` is its recency weight in the season mean.",
         "",
-        "| Game | base | margin_adj | schedule_term | w | total |",
-        "|---|---|---|---|---|---|",
+        "| Game | base | margin_adj | schedule_term | self_term | w | total |",
+        "|---|---|---|---|---|---|---|",
     ]
     if loss_bd is not None:
         lines.append(
             f"| Loss to T_TOP (elite) | {_fmt(loss_bd.base)} | "
             f"{_fmt(loss_bd.margin_adj)} | {_fmt(loss_bd.schedule_term)} | "
-            f"{_fmt(loss_bd.w)} | {_fmt(loss_bd.total)} |"
+            f"{_fmt(loss_bd.self_term)} | {_fmt(loss_bd.w)} | {_fmt(loss_bd.total)} |"
         )
     if win_bd is not None:
         lines.append(
             f"| Win over T_BOTTOM (weak) | {_fmt(win_bd.base)} | "
             f"{_fmt(win_bd.margin_adj)} | {_fmt(win_bd.schedule_term)} | "
-            f"{_fmt(win_bd.w)} | {_fmt(win_bd.total)} |"
+            f"{_fmt(win_bd.self_term)} | {_fmt(win_bd.w)} | {_fmt(win_bd.total)} |"
         )
     season = result.ratings.get("T_SUBJECT", 0.0)
     lines += [
         "",
         f"Reconciled season rating for `T_SUBJECT`: **{_fmt(season)}**.",
         "",
-        "In plain English: the **base** result (win = 3, loss = 0) is a floor nothing can override, "
-        "while the **schedule_term** rewards who you played — a big positive credit for facing the "
-        "elite, a debit for beating the weakest. That is exactly the I6 question: *does a narrow "
-        "loss to the best earn more than a narrow win over the worst?* At the Stage-A-tuned "
-        "α = 0.75 the answer is **yes end-to-end** — the loss to T_TOP out-credits the win over "
-        "T_BOTTOM on the converged ratings (the formerly-open S07/I6 caveat is resolved; see §6).",
+        "In plain English (surprise-centered credit, TASK-17): each game's credit anchors on the "
+        "team's own rating (`self_term`) and adds the *surprise* — the centered result quality "
+        "(`base` + `margin_adj`) plus `schedule_term`, which rewards who you played (a big positive "
+        "for facing the elite, a debit for beating the weakest). A **win is floored at your own "
+        "rating** so it never lowers you, but an *expected* win shows ~nothing; a close loss to the "
+        "elite earns a positive surprise. That is exactly the I6 question: *does a narrow loss to the "
+        "best earn more than a narrow win over the worst?* The answer is **yes end-to-end** — the "
+        "loss to T_TOP out-credits the win over T_BOTTOM on the converged ratings (see §6).",
     ]
     return "\n".join(lines)
 
@@ -396,46 +402,43 @@ def _rationale_section(
         return "yes" if b > m else "no"
 
     lines = [
-        "Bespoke wins **fairness** outright (every invariant I1–I13) and, after Stage-A tuning "
-        "(TASK-13: α re-derived to 0.75, ρ = ρ_tier = 0.2) and the trajectory-truth correction "
-        "(TASK-14: S04/S11 now scored against point-in-time end-of-season truth), improves "
-        f"significantly on its TASK-13 mean rank recovery "
-        f"({_fmt(_BESPOKE_MEAN_RHO_TASK13)} → "
-        f"{_fmt(verdict.mean_spearman['bespoke'])}) — but still does **not** beat the MHR replica "
-        f"({_fmt(verdict.mean_spearman['mhr'])}). That residual gap is reported honestly rather "
-        "than engineered away. The two diagnosed causes from TASK-13 are revisited below:",
+        "Bespoke wins **fairness** outright (every invariant I1–I13). On the synthetic rank-recovery "
+        "half it **trails** the MHR replica "
+        f"({_fmt(verdict.mean_spearman['bespoke'])} vs {_fmt(verdict.mean_spearman['mhr'])}), and "
+        "**TASK-17 deliberately moved this number the wrong way** — that is reported here in full, "
+        "not buried.",
         "",
-        "**Cause 1 — trajectory measurement artifact (S04, S11) — RESOLVED by TASK-14.** The "
-        "truth-scorer originally graded drifting teams against their *static* planted rating "
-        "(`attack − defense`), which is the season *average*, not end-of-season form. Bespoke's "
-        "recency weighting (I11) correctly tracks current form, so on those scenarios it was scored "
-        "backwards under the static key. TASK-14 corrects this by scoring trajectory scenarios "
-        "against *point-in-time* truth (the generator's `week_params` value at the last finalized "
-        "week — pure generator ground truth, never a recovered rating, so the observed-vs-derived "
-        "wall (brief §5) and determinism (I8) are fully preserved). The before/after for S11 "
-        "(the starkest case):",
+        "**The TASK-17 change (surprise-centered credit) and its honest cost.** TASK-17 replaced the "
+        "old `base = 3/1/0` result floor with *surprise-centered* credit: a game's credit anchors on "
+        "the team's own rating and adds the surprise of the result against the opponent (an *expected* "
+        "win over a much weaker team is ~neutral — the win-floor pins it to your own rating — while a "
+        "close loss to an elite earns a small positive). This realigns the fairness principle from "
+        "'a win must always count' to 'a win is not a loss', which the owner adopted to fix a real "
+        "closing-schedule inversion. The cost: synthetic headline rank recovery regressed "
+        f"**{_fmt(_BESPOKE_MEAN_RHO_PRE_TASK17)} → {_fmt(verdict.mean_spearman['bespoke'])}** "
+        "(pre-TASK-17 floor model → surprise-centered).",
         "",
-        "| S11 (momentum) | bespoke | mhr |",
-        "|---|---|---|",
-        f"| Static key (season-average truth, TASK-13 era) | {_fmt(_S11_BESPOKE_RHO_STATIC)} | "
-        f"{_fmt(_S11_MHR_RHO_STATIC)} |",
-        f"| Point-in-time truth (end-of-season form, TASK-14) | "
-        f"{_fmt(recovery['S11']['bespoke'].spearman_rho)} | "
-        f"{_fmt(recovery['S11']['mhr'].spearman_rho)} |",
+        "**Where the synthetic regression lives — and why it is largely an artifact.** It concentrates "
+        "in (a) the **disconnected-graph scenarios** (S01/S02): with no cross-component games the "
+        "relative *level* of two pods is genuinely unidentifiable, and the old `base = 3` floor only "
+        "ranked them by *accident* (it anchored every team to a win-rate-driven positive level); "
+        "surprise-centering removes that accidental anchor, so the honest 'cannot compare unconnected "
+        "teams' shows up as a low Spearman. And (b) mild **compression** in clean round-robins, where "
+        "neutralizing expected results discards some ordering signal. Real play has neither pathology "
+        "— every team is connected through common opponents.",
         "",
-        "The residual gap is now driven entirely by Cause 2.",
+        "**The other side of the ledger — the change does exactly what it was for.** The synthetic "
+        "**giant-killer S05** — the one scenario that mirrors the real failure mode — *improved* "
+        f"({_fmt(_S05_BESPOKE_RHO_PRE_TASK17)} → {_fmt(recovery['S05']['bespoke'].spearman_rho)}). And "
+        "on the **real MHR dataset** the headline inversion is fixed: Woodbridge fell #9 → #18 and "
+        "Mid-Fairfield (Elite) rose #14 → #6 (the 5-0 head-to-head winner now ranks above the team it "
+        "swept), the top six became all genuine national-elite programs, and the schedule-padded "
+        "Dallas Stars Elite (7-9-1) dropped out of the top 20. See `reports/real-h2h.md`.",
         "",
-        "**Cause 2 — a structural cost of fairness (giant-killer scenario S05) — remains by design.**"
-        f" Bespoke trails most on S05: {_fmt(recovery['S05']['bespoke'].spearman_rho)} vs mhr "
-        f"{_fmt(recovery['S05']['mhr'].spearman_rho)}. A genuinely weak team (`T_LUCKY`) pads wins "
-        "against weak opponents; bespoke's **base floor guarantees a win out-credits a loss vs the "
-        "same opponent (I1)**, so it cannot fully discount those lucky wins, while MHR's pure "
-        "goal-differential least-squares simply regresses them away. This is the fairness/accuracy "
-        "trade-off the model makes *by design* — it is not removable by tuning a constant without "
-        "breaking the floor, and is *expected to remain*.",
-        "",
-        "**No principled exclusion flips the verdict** — the remaining gap is driven by S05 "
-        "(structural, not a metric artifact):",
+        "**Historical note — Cause 1 (trajectory artifact, S04/S11) stays resolved.** TASK-14's "
+        "point-in-time truth fix is orthogonal to TASK-17 and still holds (S11: "
+        f"{_fmt(_S11_BESPOKE_RHO_STATIC)} static-key era → "
+        f"{_fmt(recovery['S11']['bespoke'].spearman_rho)} point-in-time).",
         "",
         "| Scenarios counted in the mean | bespoke | mhr | bespoke ahead? |",
         "|---|---|---|---|",
@@ -444,12 +447,14 @@ def _rationale_section(
         f"| Also set aside trajectory scenarios ({', '.join(sorted(traj))}) | "
         f"{_fmt(b_traj)} | {_fmt(m_traj)} | {_ahead(b_traj, m_traj)} |",
         "",
-        "**Decision (honest-fallback, no cherry-picking).** Stage-A tuning and the point-in-time "
-        "truth correction both did their jobs — α holds I6 end-to-end, the trajectory artifact is "
-        "removed, and the mean Spearman lifts substantially — but on the full scorable set bespoke "
-        "still trails, so the gate reads **FAIL** honestly. The sole remaining cause is the "
-        "deliberate structural cost of the fairness floor (S05). Fairness is solved; the accuracy "
-        "gap is characterised and its cause is structural, not hidden.",
+        "**Decision (ship + document, no cherry-picking).** The gate reads **FAIL** on the synthetic "
+        "set, honestly. It ships anyway because (1) the regression is concentrated in scenarios "
+        "unrepresentative of real play, where the old floor only 'won' by accident; (2) the "
+        "representative synthetic scenario (S05) and the real-data ranking both moved the right way; "
+        "and (3) the fairness realignment is the goal. **Methodology pivot (2026-06-24):** the "
+        "synthetic rank-recovery score is no longer the authoritative gate — it partly rewarded the "
+        "floor's accidental anchoring — so evaluation moves to the **real MHR dataset**, and the "
+        "**B4 walk-forward backtest** remains the final adjudicator of predictive accuracy.",
     ]
     return "\n".join(lines)
 
@@ -547,24 +552,28 @@ def build_report(
         "",
         "## 6. Caveats / open items",
         "",
-        "- **End-to-end I6 is resolved (α re-derived, TASK-13).** At the solver's reachable "
-        "converged spread (R_TOP − R_BOTTOM ≈ 4.38) the old α = 0.60 inverted I6 "
-        "(0.60 × 4.38 = 2.63 < 3.00). α is now derived against that real gap and tuned to **0.75** "
-        "(threshold ≈ 0.69; 0.75 × 4.38 ≈ 3.29 > 3.00), so a narrow loss to the elite out-credits a "
-        "narrow win over the bottom **end-to-end** — the S07 scenario test is green at the shipped "
-        "default. Still a contraction for I9 (0.75 × 0.95 = 0.71 < 1). See decision memo §11 Q1.",
-        "- **Parameters are Stage-A-tuned (TASK-13).** This snapshot runs at the tuned defaults "
-        "(α = 0.75, ρ = ρ_tier = 0.2, tier table unchanged) — the argmax of the `harness/tune.py` "
-        "rank-recovery sweep within the invariant-safe region. The full sweep is reproducible via "
-        "`python -m harness.tune`.",
+        "- **End-to-end I6 is robust (surprise-centered credit, TASK-17).** Centering shrank the "
+        "win/loss quality gap (~0.75, was 3), so a narrow loss to the elite out-credits a narrow win "
+        "over the bottom **end-to-end at every α in the grid** — the old 'α must clear an I6 floor' no "
+        "longer binds. The damped solve is now an **unconditional `(1 − λ)` contraction** for any "
+        "α ∈ [0, 1) (the self-anchor weight `(1 − α)` and opponent weight `α` sum to 1), stronger than "
+        "the old `α(1 − λ)` bound. See decision memo §3.1 (TASK-17 re-derivation).",
+        "- **Parameters are the principled memo defaults (α = 0.75, ρ = ρ_tier = 0.2, tier table "
+        "unchanged).** Post-TASK-17 the synthetic `harness/tune.py` sweep is **no longer the "
+        "param-selection oracle** — the synthetic rank-recovery score was shown to be partly an "
+        "artifact of the old `base = 3` floor's accidental anchoring (see §4). The sweep remains a "
+        "reproducible diagnostic (`python -m harness.tune`); the shipped point is the memo strawman, "
+        "verified invariant-feasible (I6 + contraction).",
         "- **DONE — point-in-time truth for trajectory scenarios (TASK-14).** S04/S11 are now "
         "scored against `week_params(team, last_week).rating` — the generator's end-of-season "
         "realized form — instead of the static season-average `TeamParams.rating`. For flat teams "
         "`week_params` returns the raw baseline, so all-flat scenario scores are byte-identical to "
-        "before. The trajectory measurement artifact diagnosed in TASK-13 is removed. The remaining "
-        "accuracy gap is the deliberate structural cost of the fairness floor (S05 — Cause 2 in §4), "
-        "which is expected to remain.",
-        "- **Stage B is out of scope** (walk-forward / log-loss / calibration on real data).",
+        "before. The trajectory measurement artifact diagnosed in TASK-13 is removed (orthogonal to "
+        "TASK-17).",
+        "- **Evaluation pivots to real data (2026-06-24).** The synthetic rank-recovery half is no "
+        "longer the authoritative gate; the real MHR dataset (`reports/real-h2h.md`) is the yardstick, "
+        "with the B4 walk-forward backtest as the final adjudicator. Stage B (walk-forward / log-loss "
+        "/ calibration) remains out of scope for this snapshot.",
         "",
     ]
     return "\n".join(parts)

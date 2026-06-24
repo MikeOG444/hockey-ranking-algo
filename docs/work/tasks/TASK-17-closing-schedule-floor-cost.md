@@ -150,19 +150,25 @@ win-clamp is `max(0, ·)` on the surprise term, not on `own_rating`, so it adds 
 ## Acceptance / Definition of done
 
 - [x] Owner confirmed target **(A) ship, Approach 2 (surprise-centered credit)** — resolved 2026-06-24.
-- [ ] New scenario **S14** plants closing-schedule disparity; its test fails on the old model and passes on
-      the new one (HONEST ≥ PADDER), with planted truth.
-- [ ] `models/bespoke.py` **recenters** per-game credit to `own_rating + f(result, opp − own)` with the
-      win-surprise clamped ≥ 0 and closeness buckets `1|2|3|4+`; the **Elo/Massey-style convergence is
-      re-derived and proven** for the new update (note in PR); same-opponent I1 preserved.
-- [ ] **All I1–I13 still green**; **Stage-A rank recovery does not regress** (`reports/comparison.md`
-      regenerated; before/after reported honestly — if any scenario moves, explain why).
-- [ ] Real-data confirmation: `analysis.head_to_head` shows **Woodbridge below Mid-Fairfield Elite**; the
-      ranking artifact regenerated.
-- [ ] `invariant-auditor` + `spec-keeper` verdicts in the PR; determinism (byte-identical artifacts) intact.
-- [ ] `pytest -q` green; `ruff check .` clean.
-- [ ] `docs/analysis/closing-schedule-floor-cost.md` updated from "open finding" to "resolved" (or "accepted"
-      if (B)); BOARD row 17 flipped by the loop.
+- [x] New scenario **S14** plants closing-schedule disparity; its test failed on the old model
+      (HONEST 0.764 < PADDER 1.041) and passes on the new one (HONEST 0.352 ≥ PADDER 0.242), planted truth.
+- [x] `models/bespoke.py` **recenters** per-game credit to `own_rating + surprise` with the **win-surprise
+      floored at own rating** (the win-floor); the convergence is **re-derived and proven** — an
+      unconditional `(1−λ)` contraction for any α ∈ [0,1) (memo §3.1); same-opponent I1 preserved. *(Closeness
+      buckets stayed the existing margin machinery; the opponent-relative goal-profile residual is deferred
+      to TASK-18.)*
+- [x] **All I1–I13 still green.** **⚠ Stage-A rank recovery REGRESSED, by design and documented:** synthetic
+      mean Spearman 0.8019 → 0.7031 (`reports/comparison.md` §4, full before/after + per-scenario). The
+      regression concentrates in scenarios unrepresentative of real play (disconnected pods S01/S02, where the
+      old floor only ranked by *accident*); the representative giant-killer S05 *improved* (0.357 → 0.500).
+      **Owner accepted** this cost (ship + document) and pivoted evaluation to the real dataset (see TASK-19).
+- [x] Real-data confirmation: Woodbridge **#9 → #18**, Mid-Fairfield (Elite) **#14 → #6**; `real-h2h.md`
+      regenerated (deterministic).
+- [~] `invariant-auditor` + `spec-keeper` verdicts — launched; included in the PR once they report.
+      Determinism: `comparison.md` regenerates byte-identically (`test_report_is_deterministic` green).
+- [x] `pytest -q` green (205 passed, 20 skipped, 2 xfailed); `ruff check .` clean.
+- [x] `docs/analysis/closing-schedule-floor-cost.md` updated to **RESOLVED**; BOARD row 17 flipped to
+      in-review by the loop.
 
 ---
 

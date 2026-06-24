@@ -44,16 +44,19 @@ def test_score_point_uses_scorable_set():
     assert -1.0 <= score <= 1.0
 
 
-def test_hard_constraint_filter_rejects_low_alpha():
-    """The S07/I6 hard check — not the score — gates selection: a candidate below the I6-reachable
-    threshold (alpha=0.6) is infeasible, so the sweep can never select it even if it scored well."""
-    low = tune.GridPoint(alpha=0.6, rho=0.2, tier_strength=1.0)
-    assert tune.satisfies_i6(low) is False
-    assert tune.is_feasible(low) is False
-    # The chosen-region floor (alpha=0.75) clears I6 and the contraction bound.
+def test_hard_constraint_filter_gates_on_contraction_not_an_alpha_floor():
+    """Under surprise-centered credit (TASK-17) the centered win/loss quality gap shrank (~0.75, was
+    3), so end-to-end I6 is now robust across the WHOLE alpha grid — even alpha=0.6 satisfies it. The
+    old 'alpha must clear an I6-reachable floor (>= 0.69)' no longer binds. The hard constraint that
+    actually gates selection is now the contraction bound (alpha < 1): an in-region alpha is feasible,
+    an out-of-region one (alpha >= 1) is rejected."""
+    # I6 holds even at the old-infeasible low alpha — the floor is no longer alpha-sensitive.
+    assert tune.satisfies_i6(tune.GridPoint(alpha=0.6, rho=0.2, tier_strength=1.0)) is True
+    assert tune.satisfies_i6(tune.GridPoint(alpha=0.75, rho=0.2, tier_strength=1.0)) is True
+    # The contraction bound is the binding hard constraint (alpha < 1).
+    assert tune.satisfies_contraction(tune.GridPoint(alpha=0.9, rho=0.2, tier_strength=1.0)) is True
+    assert tune.satisfies_contraction(tune.GridPoint(alpha=1.5, rho=0.2, tier_strength=1.0)) is False
     ok = tune.GridPoint(alpha=0.75, rho=0.2, tier_strength=1.0)
-    assert tune.satisfies_i6(ok) is True
-    assert tune.satisfies_contraction(ok) is True
     assert tune.is_feasible(ok) is True
 
 
