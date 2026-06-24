@@ -42,7 +42,10 @@ point-in-time truth in `harness/metrics.py`/`scenarios` (removes the measurement
 S05 gap is a deliberate cost of the fairness floor and stays).
 
 **Sequential core-model chain (own `models/bespoke.py`):** 05 ✅ → 06 ✅ → 13 ✅ → 17 ✅ (surprise-centered
-credit). **TASK-18 is the next core-model link** — sequential, never parallelize with another bespoke.py task.
+credit). **TASK-18 prototyped a goal-profile residual but it was SHELVED** (no net `models/bespoke.py`
+change): the real-data gauntlet showed it monotonically *costs* head-to-head agreement and no weight
+improved it — a documented negative result (`docs/analysis/goal-profile-residual.md`), to revisit at
+B4 walk-forward. The next core-model link, if any, follows from the real-data gate (TASK-19).
 
 ## Board
 
@@ -65,11 +68,11 @@ credit). **TASK-18 is the next core-model link** — sequential, never paralleli
 | 15 | Real MHR data loader + data-quality report | **done** | sonnet | ingest/* (new), data/real/* (new), reports/real-data-quality.md (new) | yes (additive) | — |
 | 16 | Head-to-head agreement + giant-killer case studies (real) | **done** | sonnet | analysis/* (new), reports/real-h2h.md (new) | yes (after 15) | 15 |
 | 17 | Resolve the closing-schedule floor cost (surprise-centered credit) | **done** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s14_closing_schedule.py, reports/comparison.md | no (core) | 15, 16 |
-| 18 | Opponent-relative goal-profile residual (over/under-perform vs opponent goal baseline) | **ready** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s15_goal_profile.py | no (core) | 17 |
+| 18 | Opponent-relative goal-profile residual (over/under-perform vs opponent goal baseline) — **SHELVED** (negative result; no model change) | **in-review** | opus | docs/analysis/goal-profile-residual.md, scenarios/test_s15_goal_profile.py (xfail), scenarios/builders.py | no (core) | 17 |
 | 19 | Migrate the evaluation gate from synthetic to real data | **ready** | sonnet | harness/* (new real-data gate), analysis/*, reports/* | yes (additive) | 15, 16, 17 |
 
 ## Notes
-- **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13 ✅ → 17 ✅ → 18 (next). Never parallelize these.
+- **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13 ✅ → 17 ✅ → 18 (shelved — no model change). Never parallelize these.
 - 08 depends on 04 (both touch `generator/world.py`) → run after 04 merges, not beside it.
 - To refine a backlog item into a full task file: `/task-new <id or description>` (writes
   `docs/work/tasks/TASK-NN-*.md` from the template, flips the row to `refined`).
