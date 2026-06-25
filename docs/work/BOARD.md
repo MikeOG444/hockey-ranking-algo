@@ -73,7 +73,7 @@ B4 walk-forward. The next core-model link, if any, follows from the real-data ga
 | 16 | Head-to-head agreement + giant-killer case studies (real) | **done** | sonnet | analysis/* (new), reports/real-h2h.md (new) | yes (after 15) | 15 |
 | 17 | Resolve the closing-schedule floor cost (surprise-centered credit) | **done** | opus | models/bespoke.py, models/test_bespoke_*.py, scenarios/test_s14_closing_schedule.py, reports/comparison.md | no (core) | 15, 16 |
 | 18 | Opponent-relative goal-profile residual (over/under-perform vs opponent goal baseline) — **SHELVED** (negative result; no model change) | **done** | opus | docs/analysis/goal-profile-residual.md, scenarios/test_s15_goal_profile.py (xfail), scenarios/builders.py | no (core) | 17 |
-| 19 | Migrate the evaluation gate from synthetic to real data | **ready** | sonnet | harness/* (new real-data gate), analysis/*, reports/* | yes (additive) | 15, 16, 17 |
+| 19 | Migrate the evaluation gate from synthetic to real data | **in-review** | sonnet | harness/* (new real-data gate), analysis/*, reports/* | yes (additive) | 15, 16, 17 |
 
 ## Notes
 - **Sequential chain on the model core** (own `models/bespoke.py`): 05 ✅ → 06 ✅ → 13 ✅ → 17 ✅ → 18 (shelved — no model change). Never parallelize these.
