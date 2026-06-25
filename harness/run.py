@@ -476,6 +476,14 @@ def build_report(
         "diffable artifact and **regenerates byte-identically** — its determinism is asserted by "
         "`harness/test_run.py::test_report_is_deterministic`.",
         "",
+        "> **Diagnostic, not the gate (owner pivot, 2026-06-24).** The §7 rank-recovery score "
+        "below is no longer the project's accuracy gate: it was partly an artifact of the old "
+        "`base=3` floor's anchoring (§4). The **headline gate is now the real-data evaluation in "
+        "[`reports/real-eval.md`](real-eval.md)** — head-to-head gauntlet + published-rank "
+        "agreement on the real MHR season. Treat this report as **diagnostic** evidence about "
+        "invariants and mechanism behavior (the §7 scenarios still guard I1–I13), not as the "
+        "accuracy verdict.",
+        "",
         _parameterization_line(),
         "",
         "## 1. Invariant matrix (I1–I13 × model)",

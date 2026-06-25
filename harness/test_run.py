@@ -92,6 +92,16 @@ def test_report_is_deterministic() -> None:
     assert "TASK-13" in first    # the Option-B rationale routes accuracy tuning to TASK-13
 
 
+def test_report_frames_synthetic_as_diagnostic_not_gate() -> None:
+    """Post-pivot (TASK-19): the synthetic report must label itself diagnostic, not the gate,
+    and point readers at the real-data gate as the headline adjudicator."""
+    matrix = run_invariant_matrix()
+    recovery = run_rank_recovery()
+    report = build_report(matrix, recovery, gate_verdict(matrix, recovery))
+    assert "diagnostic" in report.lower()
+    assert "real-eval.md" in report
+
+
 def test_trajectory_scenarios_scored_against_point_in_time_truth() -> None:
     """run_rank_recovery scores S04/S11 against point-in-time truth, not the static key.
 
